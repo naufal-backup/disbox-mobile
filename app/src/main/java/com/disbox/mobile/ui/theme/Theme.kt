@@ -17,35 +17,44 @@ import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
 private val DarkColorScheme = darkColorScheme(
-    primary = Color(0xFF5865F2),
-    secondary = Color(0xFF00D4AA),
-    tertiary = Color(0xFFF0A500),
-    background = Color(0xFF05050A),
-    surface = Color(0xFF121222),
+    primary = Color(0xFF5865F2), // accent
     onPrimary = Color.White,
+    secondary = Color(0xFF00D4AA), // teal
     onSecondary = Color.White,
+    tertiary = Color(0xFFF0A500), // amber
     onTertiary = Color.White,
-    onBackground = Color(0xFFC0C0E0),
-    onSurface = Color(0xFFC0C0E0),
+    background = Color(0xFF05050A), // bg-deep
+    onBackground = Color(0xFFFFFFFF), // text-primary
+    surface = Color(0xFF0A0A15), // bg-base
+    onSurface = Color(0xFFC0C0E0), // text-secondary
+    surfaceVariant = Color(0xFF121222), // bg-surface (cards)
+    onSurfaceVariant = Color(0xFF8A8AAA), // text-muted
+    outline = Color(0xFF1C1C32), // bg-elevated
+    error = Color(0xFFED4245), // red
+    outlineVariant = Color(0xFF242440) // bg-hover
 )
 
 private val LightColorScheme = lightColorScheme(
     primary = Color(0xFF5865F2),
-    secondary = Color(0xFF00D4AA),
-    tertiary = Color(0xFFF0A500),
-    background = Color(0xFFE0E0EB),
-    surface = Color(0xFFFFFFFF),
     onPrimary = Color.White,
+    secondary = Color(0xFF00D4AA),
     onSecondary = Color.White,
+    tertiary = Color(0xFFF0A500),
     onTertiary = Color.White,
-    onBackground = Color(0xFF0A0A1A),
-    onSurface = Color(0xFF0A0A1A),
+    background = Color(0xFFE0E0EB), // bg-deep
+    onBackground = Color(0xFF0A0A1A), // text-primary
+    surface = Color(0xFFF0F2F5), // bg-base
+    onSurface = Color(0xFF353550), // text-secondary
+    surfaceVariant = Color(0xFFFFFFFF), // bg-surface (cards)
+    onSurfaceVariant = Color(0xFF5A5A7A), // text-muted
+    outline = Color(0xFFE8EBF0), // bg-hover
+    error = Color(0xFFED4245)
 )
 
 @Composable
 fun DisboxMobileTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    dynamicColor: Boolean = true,
+    dynamicColor: Boolean = false, // Disabled to match Linux aesthetics
     content: @Composable () -> Unit
 ) {
     val colorScheme = when {
@@ -67,6 +76,7 @@ fun DisboxMobileTheme(
 
     MaterialTheme(
         colorScheme = colorScheme,
+        typography = Typography,
         content = content
     )
 }

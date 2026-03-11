@@ -1,9 +1,9 @@
 -- Merging decision tree log ---
 manifest
-ADDED from /home/tb/Documents/GitHub/disbox-mobile/app/src/main/AndroidManifest.xml:2:1-30:12
-INJECTED from /home/tb/Documents/GitHub/disbox-mobile/app/src/main/AndroidManifest.xml:2:1-30:12
-INJECTED from /home/tb/Documents/GitHub/disbox-mobile/app/src/main/AndroidManifest.xml:2:1-30:12
-INJECTED from /home/tb/Documents/GitHub/disbox-mobile/app/src/main/AndroidManifest.xml:2:1-30:12
+ADDED from /home/tb/Documents/GitHub/disbox-mobile/app/src/main/AndroidManifest.xml:2:1-32:12
+INJECTED from /home/tb/Documents/GitHub/disbox-mobile/app/src/main/AndroidManifest.xml:2:1-32:12
+INJECTED from /home/tb/Documents/GitHub/disbox-mobile/app/src/main/AndroidManifest.xml:2:1-32:12
+INJECTED from /home/tb/Documents/GitHub/disbox-mobile/app/src/main/AndroidManifest.xml:2:1-32:12
 MERGED from [androidx.activity:activity:1.9.0] /home/tb/.gradle/caches/8.10.2/transforms/d892be2e226d60dbc73429dd0e184c40/transformed/activity-1.9.0/AndroidManifest.xml:17:1-22:12
 MERGED from [androidx.activity:activity-ktx:1.9.0] /home/tb/.gradle/caches/8.10.2/transforms/075a41c2239694b5b3c2eb2a2c01c7f2/transformed/activity-ktx-1.9.0/AndroidManifest.xml:2:1-7:12
 MERGED from [androidx.compose.material3:material3-android:1.2.1] /home/tb/.gradle/caches/8.10.2/transforms/b7e1b4a62a283341bfbd6234c999e5db/transformed/material3-release/AndroidManifest.xml:17:1-22:12
@@ -13,10 +13,10 @@ MERGED from [androidx.savedstate:savedstate:1.2.1] /home/tb/.gradle/caches/8.10.
 MERGED from [androidx.compose.material:material-icons-core-android:1.6.8] /home/tb/.gradle/caches/8.10.2/transforms/18f4598de7105072b492aa14b435ed75/transformed/material-icons-core-release/AndroidManifest.xml:2:1-7:12
 MERGED from [androidx.compose.material:material-icons-extended-android:1.6.8] /home/tb/.gradle/caches/8.10.2/transforms/18e5ef8bad1941491742abe1c1738836/transformed/material-icons-extended-release/AndroidManifest.xml:2:1-7:12
 MERGED from [androidx.compose.material:material-ripple-android:1.6.8] /home/tb/.gradle/caches/8.10.2/transforms/c5b26664ff81bf36d9be907a9b1e8582/transformed/material-ripple-release/AndroidManifest.xml:2:1-7:12
-MERGED from [androidx.compose.animation:animation-core-android:1.6.8] /home/tb/.gradle/caches/8.10.2/transforms/5fae0b4d9f1fbdeee91836320835a0b2/transformed/animation-core-release/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.compose.foundation:foundation-android:1.6.8] /home/tb/.gradle/caches/8.10.2/transforms/9bd894873c0a5554a869bf5c4eaa253c/transformed/foundation-release/AndroidManifest.xml:2:1-7:12
 MERGED from [androidx.compose.animation:animation-android:1.6.8] /home/tb/.gradle/caches/8.10.2/transforms/fd31b6e482c6fd0e8e992639fe0d4f80/transformed/animation-release/AndroidManifest.xml:2:1-7:12
 MERGED from [androidx.compose.foundation:foundation-layout-android:1.6.8] /home/tb/.gradle/caches/8.10.2/transforms/be8ff8374a1acd4defbe55767cf89cc3/transformed/foundation-layout-release/AndroidManifest.xml:2:1-7:12
-MERGED from [androidx.compose.foundation:foundation-android:1.6.8] /home/tb/.gradle/caches/8.10.2/transforms/9bd894873c0a5554a869bf5c4eaa253c/transformed/foundation-release/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.compose.animation:animation-core-android:1.6.8] /home/tb/.gradle/caches/8.10.2/transforms/5fae0b4d9f1fbdeee91836320835a0b2/transformed/animation-core-release/AndroidManifest.xml:2:1-7:12
 MERGED from [androidx.compose.ui:ui-unit-android:1.6.8] /home/tb/.gradle/caches/8.10.2/transforms/6e64a0930585025c88bd88b3dc3235ee/transformed/ui-unit-release/AndroidManifest.xml:2:1-7:12
 MERGED from [androidx.compose.ui:ui-geometry-android:1.6.8] /home/tb/.gradle/caches/8.10.2/transforms/d1971bcc412b7bb07882743465d84371/transformed/ui-geometry-release/AndroidManifest.xml:2:1-7:12
 MERGED from [androidx.compose.ui:ui-util-android:1.6.8] /home/tb/.gradle/caches/8.10.2/transforms/7a2213d464fc6707ef7a897d73a439de/transformed/ui-util-release/AndroidManifest.xml:2:1-7:12
@@ -33,6 +33,7 @@ MERGED from [androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.2] /home/tb/.gradle/
 MERGED from [androidx.lifecycle:lifecycle-runtime-ktx-android:2.8.2] /home/tb/.gradle/caches/8.10.2/transforms/6f6e351b4577cfa2d68a011c4f6cc4ad/transformed/lifecycle-runtime-ktx-release/AndroidManifest.xml:2:1-7:12
 MERGED from [androidx.lifecycle:lifecycle-viewmodel-compose-android:2.8.2] /home/tb/.gradle/caches/8.10.2/transforms/61d53824a06736d664e2476be7bfeb41/transformed/lifecycle-viewmodel-compose-release/AndroidManifest.xml:2:1-7:12
 MERGED from [androidx.compose.ui:ui-android:1.6.8] /home/tb/.gradle/caches/8.10.2/transforms/6ebd605c33ecbb0ceee9386abd4e49c4/transformed/ui-release/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.compose.ui:ui-text-google-fonts:1.6.8] /home/tb/.gradle/caches/8.10.2/transforms/31d80d094fc7621bf322acb1bad226e8/transformed/ui-text-google-fonts-1.6.8/AndroidManifest.xml:2:1-7:12
 MERGED from [androidx.autofill:autofill:1.0.0] /home/tb/.gradle/caches/8.10.2/transforms/a41bb170c4e5412b07b316fc60bfbc58/transformed/autofill-1.0.0/AndroidManifest.xml:17:1-24:12
 MERGED from [androidx.core:core:1.13.1] /home/tb/.gradle/caches/8.10.2/transforms/a08cf42064b6c2b893627c0f0f8539ea/transformed/core-1.13.1/AndroidManifest.xml:17:1-30:12
 MERGED from [androidx.customview:customview-poolingcontainer:1.0.0] /home/tb/.gradle/caches/8.10.2/transforms/05eb66086b57d1cb74fdecc0a9c185cf/transformed/customview-poolingcontainer-1.0.0/AndroidManifest.xml:17:1-23:12
@@ -83,8 +84,8 @@ ADDED from /home/tb/Documents/GitHub/disbox-mobile/app/src/main/AndroidManifest.
 	android:name
 		ADDED from /home/tb/Documents/GitHub/disbox-mobile/app/src/main/AndroidManifest.xml:9:22-74
 application
-ADDED from /home/tb/Documents/GitHub/disbox-mobile/app/src/main/AndroidManifest.xml:11:5-28:19
-INJECTED from /home/tb/Documents/GitHub/disbox-mobile/app/src/main/AndroidManifest.xml:11:5-28:19
+ADDED from /home/tb/Documents/GitHub/disbox-mobile/app/src/main/AndroidManifest.xml:11:5-30:19
+INJECTED from /home/tb/Documents/GitHub/disbox-mobile/app/src/main/AndroidManifest.xml:11:5-30:19
 MERGED from [androidx.emoji2:emoji2:1.3.0] /home/tb/.gradle/caches/8.10.2/transforms/efc96190a91dbc4a32c8fcc2383abdb3/transformed/emoji2-1.3.0/AndroidManifest.xml:23:5-33:19
 MERGED from [androidx.emoji2:emoji2:1.3.0] /home/tb/.gradle/caches/8.10.2/transforms/efc96190a91dbc4a32c8fcc2383abdb3/transformed/emoji2-1.3.0/AndroidManifest.xml:23:5-33:19
 MERGED from [androidx.lifecycle:lifecycle-process:2.8.2] /home/tb/.gradle/caches/8.10.2/transforms/a9e0a3be126072ebd11a76e1859095e6/transformed/lifecycle-process-2.8.2/AndroidManifest.xml:23:5-33:19
@@ -100,37 +101,41 @@ MERGED from [androidx.startup:startup-runtime:1.1.1] /home/tb/.gradle/caches/8.1
 	android:extractNativeLibs
 		INJECTED from /home/tb/Documents/GitHub/disbox-mobile/app/src/main/AndroidManifest.xml
 	android:requestLegacyExternalStorage
-		ADDED from /home/tb/Documents/GitHub/disbox-mobile/app/src/main/AndroidManifest.xml:15:9-52
+		ADDED from /home/tb/Documents/GitHub/disbox-mobile/app/src/main/AndroidManifest.xml:17:9-52
 	android:appComponentFactory
 		ADDED from [androidx.core:core:1.13.1] /home/tb/.gradle/caches/8.10.2/transforms/a08cf42064b6c2b893627c0f0f8539ea/transformed/core-1.13.1/AndroidManifest.xml:28:18-86
 	android:supportsRtl
-		ADDED from /home/tb/Documents/GitHub/disbox-mobile/app/src/main/AndroidManifest.xml:14:9-35
+		ADDED from /home/tb/Documents/GitHub/disbox-mobile/app/src/main/AndroidManifest.xml:16:9-35
 	android:label
-		ADDED from /home/tb/Documents/GitHub/disbox-mobile/app/src/main/AndroidManifest.xml:13:9-41
+		ADDED from /home/tb/Documents/GitHub/disbox-mobile/app/src/main/AndroidManifest.xml:15:9-41
+	android:roundIcon
+		ADDED from /home/tb/Documents/GitHub/disbox-mobile/app/src/main/AndroidManifest.xml:14:9-54
 	tools:targetApi
-		ADDED from /home/tb/Documents/GitHub/disbox-mobile/app/src/main/AndroidManifest.xml:17:9-29
+		ADDED from /home/tb/Documents/GitHub/disbox-mobile/app/src/main/AndroidManifest.xml:19:9-29
+	android:icon
+		ADDED from /home/tb/Documents/GitHub/disbox-mobile/app/src/main/AndroidManifest.xml:13:9-43
 	android:allowBackup
 		ADDED from /home/tb/Documents/GitHub/disbox-mobile/app/src/main/AndroidManifest.xml:12:9-36
 	android:theme
-		ADDED from /home/tb/Documents/GitHub/disbox-mobile/app/src/main/AndroidManifest.xml:16:9-50
+		ADDED from /home/tb/Documents/GitHub/disbox-mobile/app/src/main/AndroidManifest.xml:18:9-50
 activity#com.disbox.mobile.MainActivity
-ADDED from /home/tb/Documents/GitHub/disbox-mobile/app/src/main/AndroidManifest.xml:18:9-27:20
+ADDED from /home/tb/Documents/GitHub/disbox-mobile/app/src/main/AndroidManifest.xml:20:9-29:20
 	android:exported
-		ADDED from /home/tb/Documents/GitHub/disbox-mobile/app/src/main/AndroidManifest.xml:20:13-36
+		ADDED from /home/tb/Documents/GitHub/disbox-mobile/app/src/main/AndroidManifest.xml:22:13-36
 	android:theme
-		ADDED from /home/tb/Documents/GitHub/disbox-mobile/app/src/main/AndroidManifest.xml:21:13-54
+		ADDED from /home/tb/Documents/GitHub/disbox-mobile/app/src/main/AndroidManifest.xml:23:13-54
 	android:name
-		ADDED from /home/tb/Documents/GitHub/disbox-mobile/app/src/main/AndroidManifest.xml:19:13-41
+		ADDED from /home/tb/Documents/GitHub/disbox-mobile/app/src/main/AndroidManifest.xml:21:13-41
 intent-filter#action:name:android.intent.action.MAIN+category:name:android.intent.category.LAUNCHER
-ADDED from /home/tb/Documents/GitHub/disbox-mobile/app/src/main/AndroidManifest.xml:22:13-26:29
+ADDED from /home/tb/Documents/GitHub/disbox-mobile/app/src/main/AndroidManifest.xml:24:13-28:29
 action#android.intent.action.MAIN
-ADDED from /home/tb/Documents/GitHub/disbox-mobile/app/src/main/AndroidManifest.xml:23:17-69
+ADDED from /home/tb/Documents/GitHub/disbox-mobile/app/src/main/AndroidManifest.xml:25:17-69
 	android:name
-		ADDED from /home/tb/Documents/GitHub/disbox-mobile/app/src/main/AndroidManifest.xml:23:25-66
+		ADDED from /home/tb/Documents/GitHub/disbox-mobile/app/src/main/AndroidManifest.xml:25:25-66
 category#android.intent.category.LAUNCHER
-ADDED from /home/tb/Documents/GitHub/disbox-mobile/app/src/main/AndroidManifest.xml:25:17-77
+ADDED from /home/tb/Documents/GitHub/disbox-mobile/app/src/main/AndroidManifest.xml:27:17-77
 	android:name
-		ADDED from /home/tb/Documents/GitHub/disbox-mobile/app/src/main/AndroidManifest.xml:25:27-74
+		ADDED from /home/tb/Documents/GitHub/disbox-mobile/app/src/main/AndroidManifest.xml:27:27-74
 uses-sdk
 INJECTED from /home/tb/Documents/GitHub/disbox-mobile/app/src/main/AndroidManifest.xml reason: use-sdk injection requested
 INJECTED from /home/tb/Documents/GitHub/disbox-mobile/app/src/main/AndroidManifest.xml
@@ -153,14 +158,14 @@ MERGED from [androidx.compose.material:material-icons-extended-android:1.6.8] /h
 MERGED from [androidx.compose.material:material-icons-extended-android:1.6.8] /home/tb/.gradle/caches/8.10.2/transforms/18e5ef8bad1941491742abe1c1738836/transformed/material-icons-extended-release/AndroidManifest.xml:5:5-44
 MERGED from [androidx.compose.material:material-ripple-android:1.6.8] /home/tb/.gradle/caches/8.10.2/transforms/c5b26664ff81bf36d9be907a9b1e8582/transformed/material-ripple-release/AndroidManifest.xml:5:5-44
 MERGED from [androidx.compose.material:material-ripple-android:1.6.8] /home/tb/.gradle/caches/8.10.2/transforms/c5b26664ff81bf36d9be907a9b1e8582/transformed/material-ripple-release/AndroidManifest.xml:5:5-44
-MERGED from [androidx.compose.animation:animation-core-android:1.6.8] /home/tb/.gradle/caches/8.10.2/transforms/5fae0b4d9f1fbdeee91836320835a0b2/transformed/animation-core-release/AndroidManifest.xml:5:5-44
-MERGED from [androidx.compose.animation:animation-core-android:1.6.8] /home/tb/.gradle/caches/8.10.2/transforms/5fae0b4d9f1fbdeee91836320835a0b2/transformed/animation-core-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.foundation:foundation-android:1.6.8] /home/tb/.gradle/caches/8.10.2/transforms/9bd894873c0a5554a869bf5c4eaa253c/transformed/foundation-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.foundation:foundation-android:1.6.8] /home/tb/.gradle/caches/8.10.2/transforms/9bd894873c0a5554a869bf5c4eaa253c/transformed/foundation-release/AndroidManifest.xml:5:5-44
 MERGED from [androidx.compose.animation:animation-android:1.6.8] /home/tb/.gradle/caches/8.10.2/transforms/fd31b6e482c6fd0e8e992639fe0d4f80/transformed/animation-release/AndroidManifest.xml:5:5-44
 MERGED from [androidx.compose.animation:animation-android:1.6.8] /home/tb/.gradle/caches/8.10.2/transforms/fd31b6e482c6fd0e8e992639fe0d4f80/transformed/animation-release/AndroidManifest.xml:5:5-44
 MERGED from [androidx.compose.foundation:foundation-layout-android:1.6.8] /home/tb/.gradle/caches/8.10.2/transforms/be8ff8374a1acd4defbe55767cf89cc3/transformed/foundation-layout-release/AndroidManifest.xml:5:5-44
 MERGED from [androidx.compose.foundation:foundation-layout-android:1.6.8] /home/tb/.gradle/caches/8.10.2/transforms/be8ff8374a1acd4defbe55767cf89cc3/transformed/foundation-layout-release/AndroidManifest.xml:5:5-44
-MERGED from [androidx.compose.foundation:foundation-android:1.6.8] /home/tb/.gradle/caches/8.10.2/transforms/9bd894873c0a5554a869bf5c4eaa253c/transformed/foundation-release/AndroidManifest.xml:5:5-44
-MERGED from [androidx.compose.foundation:foundation-android:1.6.8] /home/tb/.gradle/caches/8.10.2/transforms/9bd894873c0a5554a869bf5c4eaa253c/transformed/foundation-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.animation:animation-core-android:1.6.8] /home/tb/.gradle/caches/8.10.2/transforms/5fae0b4d9f1fbdeee91836320835a0b2/transformed/animation-core-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.animation:animation-core-android:1.6.8] /home/tb/.gradle/caches/8.10.2/transforms/5fae0b4d9f1fbdeee91836320835a0b2/transformed/animation-core-release/AndroidManifest.xml:5:5-44
 MERGED from [androidx.compose.ui:ui-unit-android:1.6.8] /home/tb/.gradle/caches/8.10.2/transforms/6e64a0930585025c88bd88b3dc3235ee/transformed/ui-unit-release/AndroidManifest.xml:5:5-44
 MERGED from [androidx.compose.ui:ui-unit-android:1.6.8] /home/tb/.gradle/caches/8.10.2/transforms/6e64a0930585025c88bd88b3dc3235ee/transformed/ui-unit-release/AndroidManifest.xml:5:5-44
 MERGED from [androidx.compose.ui:ui-geometry-android:1.6.8] /home/tb/.gradle/caches/8.10.2/transforms/d1971bcc412b7bb07882743465d84371/transformed/ui-geometry-release/AndroidManifest.xml:5:5-44
@@ -193,6 +198,8 @@ MERGED from [androidx.lifecycle:lifecycle-viewmodel-compose-android:2.8.2] /home
 MERGED from [androidx.lifecycle:lifecycle-viewmodel-compose-android:2.8.2] /home/tb/.gradle/caches/8.10.2/transforms/61d53824a06736d664e2476be7bfeb41/transformed/lifecycle-viewmodel-compose-release/AndroidManifest.xml:5:5-44
 MERGED from [androidx.compose.ui:ui-android:1.6.8] /home/tb/.gradle/caches/8.10.2/transforms/6ebd605c33ecbb0ceee9386abd4e49c4/transformed/ui-release/AndroidManifest.xml:5:5-44
 MERGED from [androidx.compose.ui:ui-android:1.6.8] /home/tb/.gradle/caches/8.10.2/transforms/6ebd605c33ecbb0ceee9386abd4e49c4/transformed/ui-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.ui:ui-text-google-fonts:1.6.8] /home/tb/.gradle/caches/8.10.2/transforms/31d80d094fc7621bf322acb1bad226e8/transformed/ui-text-google-fonts-1.6.8/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.ui:ui-text-google-fonts:1.6.8] /home/tb/.gradle/caches/8.10.2/transforms/31d80d094fc7621bf322acb1bad226e8/transformed/ui-text-google-fonts-1.6.8/AndroidManifest.xml:5:5-44
 MERGED from [androidx.autofill:autofill:1.0.0] /home/tb/.gradle/caches/8.10.2/transforms/a41bb170c4e5412b07b316fc60bfbc58/transformed/autofill-1.0.0/AndroidManifest.xml:20:5-22:41
 MERGED from [androidx.autofill:autofill:1.0.0] /home/tb/.gradle/caches/8.10.2/transforms/a41bb170c4e5412b07b316fc60bfbc58/transformed/autofill-1.0.0/AndroidManifest.xml:20:5-22:41
 MERGED from [androidx.core:core:1.13.1] /home/tb/.gradle/caches/8.10.2/transforms/a08cf42064b6c2b893627c0f0f8539ea/transformed/core-1.13.1/AndroidManifest.xml:20:5-44

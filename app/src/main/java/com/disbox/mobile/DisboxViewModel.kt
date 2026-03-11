@@ -1,6 +1,7 @@
 package com.disbox.mobile
 
 import android.app.Application
+import android.content.Context
 import android.net.Uri
 import android.os.Environment
 import androidx.compose.runtime.getValue
@@ -8,29 +9,52 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.io.File
 
 class DisboxViewModel(application: Application) : AndroidViewModel(application) {
+    private val prefs = application.getSharedPreferences("disbox_prefs", Context.MODE_PRIVATE)
+    
     var isConnected by mutableStateOf(false)
-    var webhookUrl by mutableStateOf("")
+    var webhookUrl by mutableStateOf(prefs.getString("webhook_url", "") ?: "")
     var api by mutableStateOf<DisboxApi?>(null)
     var allFiles by mutableStateOf<List<DisboxFile>>(emptyList())
     var currentPath by mutableStateOf("/")
     var isLoading by mutableStateOf(false)
     var progressMap by mutableStateOf<Map<String, Float>>(emptyMap())
     var selectionSet by mutableStateOf<Set<String>>(emptySet())
-    var theme by mutableStateOf("dark")
+    
+    var theme by mutableStateOf(prefs.getString("theme", "dark") ?: "dark")
+    var chunkSize by mutableStateOf(prefs.getInt("chunk_size", 10 * 1024 * 1024))
+    var metadataStatus by mutableStateOf("synced")
+    
+    var viewMode by mutableStateOf(prefs.getString("view_mode", "grid") ?: "grid")
+    var zoomLevel by mutableStateOf(prefs.getFloat("zoom_level", 1f))
+
+    private val notificationHelper = NotificationHelper(application)
+    private var pollJob: Job? = null
+
+    init {
+        if (webhookUrl.isNotEmpty()) {
+            connect(webhookUrl)
+        }
+    }
 
     fun connect(url: String) {
         webhookUrl = url
+        prefs.edit().putString("webhook_url", url).apply()
         api = DisboxApi(getApplication(), url)
+        api?.chunkSize = chunkSize
+        api?.onStatusChange = { metadataStatus = it }
         viewModelScope.launch {
             isLoading = true
             try {
                 api!!.init()
                 allFiles = api!!.getFileSystem()
                 isConnected = true
+                startPolling()
             } catch (e: Exception) {
                 e.printStackTrace()
             } finally {
@@ -39,20 +63,57 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    private fun startPolling() {
+        pollJob?.cancel()
+        pollJob = viewModelScope.launch {
+            while (isConnected) {
+                delay(30000)
+                if (metadataStatus == "synced") {
+                    refresh(silent = true)
+                }
+            }
+        }
+    }
+
+    fun setView(mode: String) {
+        viewMode = mode
+        prefs.edit().putString("view_mode", mode).apply()
+    }
+
+    fun setZoom(level: Float) {
+        zoomLevel = level
+        prefs.edit().putFloat("zoom_level", level).apply()
+    }
+
+    fun setChunk(size: Int) {
+        chunkSize = size
+        api?.chunkSize = size
+        prefs.edit().putInt("chunk_size", size).apply()
+    }
+
+    fun toggleTheme() {
+        val newTheme = if (theme == "dark") "light" else "dark"
+        theme = newTheme
+        prefs.edit().putString("theme", newTheme).apply()
+    }
+
     fun disconnect() {
+        pollJob?.cancel()
+        prefs.edit().remove("webhook_url").apply()
         isConnected = false
         api = null
         allFiles = emptyList()
         currentPath = "/"
         selectionSet = emptySet()
+        webhookUrl = ""
     }
 
-    fun refresh() {
+    fun refresh(silent: Boolean = false) {
         viewModelScope.launch {
-            isLoading = true
+            if (!silent) isLoading = true
             api?.syncMetadata()
             allFiles = api?.getFileSystem() ?: emptyList()
-            isLoading = false
+            if (!silent) isLoading = false
         }
     }
 
@@ -70,13 +131,23 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    fun deleteSelected() {
+    fun deletePaths(pathsOrIds: List<String>) {
+        // Optimistic UI: Filter out items immediately
+        val pathsToDelete = allFiles.filter { pathsOrIds.contains(it.id) || pathsOrIds.contains(it.path) }.map { it.path }
+        allFiles = allFiles.filterNot { f ->
+            pathsOrIds.contains(f.id) || pathsOrIds.contains(f.path) || pathsToDelete.any { p -> f.path.startsWith("$p/") }
+        }
+        selectionSet = emptySet()
+
         viewModelScope.launch {
-            isLoading = true
-            api?.bulkDelete(selectionSet.toList())
-            selectionSet = emptySet()
-            allFiles = api?.getFileSystem() ?: emptyList()
-            isLoading = false
+            metadataStatus = "uploading"
+            try {
+                api?.bulkDelete(pathsOrIds)
+                // Refresh Ground Truth after successful background delete
+                allFiles = api?.getFileSystem() ?: emptyList()
+            } catch (e: Exception) {
+                refresh() // Rollback on error
+            }
         }
     }
 
@@ -98,9 +169,11 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
             api?.let { disbox ->
                 val fileName = getFileName(uri)
                 val path = if (currentPath == "/") fileName else "${currentPath.trimStart('/')}/$fileName"
+                val notificationId = fileName.hashCode()
                 try {
                     disbox.uploadFile(uri, path) { p ->
                         progressMap = progressMap.toMutableMap().apply { put(fileName, p) }
+                        notificationHelper.showProgressNotification(notificationId, "Uploading $fileName", p, true)
                     }
                     allFiles = disbox.getFileSystem()
                 } catch (e: Exception) {
@@ -118,9 +191,11 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
             val destDir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "disbox_downloads")
             if (!destDir.exists()) destDir.mkdirs()
             val destFile = File(destDir, name)
+            val notificationId = name.hashCode()
             try {
                 api?.downloadFile(file, destFile) { p ->
                     progressMap = progressMap.toMutableMap().apply { put(name, p) }
+                    notificationHelper.showProgressNotification(notificationId, "Downloading $name", p, false)
                 }
             } catch (e: Exception) {
                 e.printStackTrace()

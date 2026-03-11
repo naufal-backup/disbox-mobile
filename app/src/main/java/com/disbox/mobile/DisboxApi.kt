@@ -30,6 +30,7 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
     var hashedWebhook: String? = null
     var lastSyncedId: String? = null
     var chunkSize = 8 * 1024 * 1024 // 8MB
+    var onStatusChange: ((String) -> Unit)? = null
     
     private val metadataDir: File by lazy {
         val dir = File(Environment.getExternalStorageDirectory(), "disbox")
@@ -109,9 +110,11 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
             val files = downloadMetadataFromMsg(msgId)
             saveMetadataToLocal(files, msgId)
             lastSyncedId = msgId
+            onStatusChange?.invoke("synced")
             true
         } catch (e: Exception) {
             e.printStackTrace()
+            onStatusChange?.invoke("error")
             false
         }
     }
@@ -125,6 +128,7 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
             "updatedAt" to System.currentTimeMillis()
         )
         file.writeText(gson.toJson(map))
+        if (isDirty) onStatusChange?.invoke("dirty")
     }
 
     suspend fun getFileSystem(): List<DisboxFile> = withContext(Dispatchers.IO) {
@@ -140,11 +144,11 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
         }
     }
 
-    suspend fun uploadMetadataToDiscord() = withContext(Dispatchers.IO) {
-        val files = getFileSystem()
-        if (files.isEmpty()) return@withContext
+    suspend fun uploadMetadataToDiscord(explicitFiles: List<DisboxFile>? = null) = withContext(Dispatchers.IO) {
+        val files = explicitFiles ?: getFileSystem()
         val json = gson.toJson(files)
         
+        onStatusChange?.invoke("uploading")
         val body = MultipartBody.Builder()
             .setType(MultipartBody.FORM)
             .addFormDataPart("file", "disbox_metadata.json", json.toRequestBody("application/json".toMediaTypeOrNull()))
@@ -164,14 +168,20 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
                 if (newMsgId != null) {
                     saveMetadataToLocal(files, newMsgId, false)
                     lastSyncedId = newMsgId
+                    onStatusChange?.invoke("synced")
                     
                     // Update webhook name
                     val patchBody = gson.toJson(mapOf("name" to "dbx: $newMsgId")).toRequestBody("application/json".toMediaTypeOrNull())
                     val patchReq = Request.Builder().url(webhookUrl).patch(patchBody).build()
-                    client.newCall(patchReq).execute()
+                    try { client.newCall(patchReq).execute() } catch (e: Exception) {}
                 }
+            } else {
+                onStatusChange?.invoke("error")
             }
-        } catch (e: Exception) { e.printStackTrace() }
+        } catch (e: Exception) { 
+            e.printStackTrace()
+            onStatusChange?.invoke("error")
+        }
     }
 
     suspend fun createFile(path: String, msgIds: List<String>, size: Long, id: String? = null) {
@@ -181,7 +191,7 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
         val idx = files.indexOfFirst { it.id == fileId }
         if (idx >= 0) files[idx] = entry else files.add(entry)
         saveMetadataToLocal(files, isDirty = true)
-        uploadMetadataToDiscord()
+        uploadMetadataToDiscord(files)
     }
 
     suspend fun createFolder(folderName: String, currentPath: String) {
@@ -195,17 +205,18 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
             (id != null && it.id == id) || (id == null && it.path == targetPath) || it.path.startsWith("$targetPath/")
         }
         saveMetadataToLocal(files, isDirty = true)
-        uploadMetadataToDiscord()
+        uploadMetadataToDiscord(files)
     }
 
-    suspend fun bulkDelete(ids: List<String>) {
-        val files = getFileSystem().toMutableList()
-        val pathsToDelete = files.filter { ids.contains(it.id) }.map { it.path }
+    suspend fun bulkDelete(items: List<String>) {
+        val files = getFileSystem()
         val filtered = files.filterNot { f ->
-            ids.contains(f.id) || pathsToDelete.any { p -> f.path.startsWith("$p/") }
+            items.any { item ->
+                f.id == item || f.path == item || f.path.startsWith("$item/")
+            }
         }
         saveMetadataToLocal(filtered, isDirty = true)
-        uploadMetadataToDiscord()
+        uploadMetadataToDiscord(filtered)
     }
 
     suspend fun renamePath(oldPath: String, newPath: String, id: String? = null) {
@@ -219,7 +230,7 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
         }
         if (found) {
             saveMetadataToLocal(files, isDirty = true)
-            uploadMetadataToDiscord()
+            uploadMetadataToDiscord(files)
         }
     }
 
@@ -245,7 +256,7 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
         if (toAdd.isNotEmpty()) {
             files.addAll(toAdd)
             saveMetadataToLocal(files, isDirty = true)
-            uploadMetadataToDiscord()
+            uploadMetadataToDiscord(files)
         }
     }
 
@@ -315,7 +326,12 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
             }
         }
         
-        createFile(uploadPath, messageIds, size, fileId)
+        val updatedFiles = getFileSystem().toMutableList()
+        val entry = DisboxFile(fileId, uploadPath, messageIds, size)
+        val idx = updatedFiles.indexOfFirst { it.id == fileId }
+        if (idx >= 0) updatedFiles[idx] = entry else updatedFiles.add(entry)
+        saveMetadataToLocal(updatedFiles, isDirty = true)
+        uploadMetadataToDiscord(updatedFiles)
         messageIds
     }
 

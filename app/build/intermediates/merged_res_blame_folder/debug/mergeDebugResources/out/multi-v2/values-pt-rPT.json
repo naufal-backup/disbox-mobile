@@ -1,7 +1,7 @@
 {
     "logs": [
         {
-            "outputFile": "com.disbox.mobile.app-mergeDebugResources-40:/values-pt-rPT/values-pt-rPT.xml",
+            "outputFile": "com.disbox.mobile.app-mergeDebugResources-41:/values-pt-rPT/values-pt-rPT.xml",
             "map": [
                 {
                     "source": "/home/tb/.gradle/caches/8.10.2/transforms/b7e1b4a62a283341bfbd6234c999e5db/transformed/material3-release/res/values-pt-rPT/values-pt-rPT.xml",
