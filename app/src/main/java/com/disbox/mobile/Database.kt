@@ -2,12 +2,18 @@ package com.disbox.mobile
 
 import android.content.Context
 import androidx.room.*
-import kotlinx.coroutines.flow.Flow
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 
-// [REFACTOR] Room Entity for Files
-@Entity(tableName = "files")
+// [FIX] PRIMARY KEY sekarang (id, hash) — tiap file terikat ke satu webhook
+@Entity(
+    tableName = "files",
+    primaryKeys = ["id", "hash"]
+)
 data class FileEntity(
-    @PrimaryKey val id: String,
+    val id: String,
+    // [FIX] Kolom hash wajib — digunakan untuk isolasi data per webhook
+    val hash: String,
     val path: String,
     @ColumnInfo(name = "parent_path") val parentPath: String,
     val name: String,
@@ -16,7 +22,6 @@ data class FileEntity(
     @ColumnInfo(name = "message_ids") val messageIds: String // JSON string
 )
 
-// [REFACTOR] Room Entity for Sync Metadata
 @Entity(tableName = "metadata_sync")
 data class MetadataSyncEntity(
     @PrimaryKey val hash: String,
@@ -28,17 +33,18 @@ data class MetadataSyncEntity(
 
 @Dao
 interface FileDao {
-    @Query("SELECT * FROM files")
-    suspend fun getAllFiles(): List<FileEntity>
+    // [FIX] Semua query wajib filter by hash
+    @Query("SELECT * FROM files WHERE hash = :hash")
+    suspend fun getAllFilesByHash(hash: String): List<FileEntity>
 
-    @Query("SELECT * FROM files WHERE parent_path = :parentPath")
-    suspend fun getFilesByParent(parentPath: String): List<FileEntity>
+    @Query("SELECT * FROM files WHERE parent_path = :parentPath AND hash = :hash")
+    suspend fun getFilesByParent(parentPath: String, hash: String): List<FileEntity>
 
-    @Query("SELECT * FROM files WHERE id = :id")
-    suspend fun getFileById(id: String): FileEntity?
+    @Query("SELECT * FROM files WHERE id = :id AND hash = :hash")
+    suspend fun getFileById(id: String, hash: String): FileEntity?
 
-    @Query("SELECT * FROM files WHERE path = :path")
-    suspend fun getFileByPath(path: String): FileEntity?
+    @Query("SELECT * FROM files WHERE path = :path AND hash = :hash")
+    suspend fun getFileByPath(path: String, hash: String): FileEntity?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertOrReplace(file: FileEntity)
@@ -46,17 +52,18 @@ interface FileDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(files: List<FileEntity>)
 
-    @Query("DELETE FROM files")
-    suspend fun deleteAll()
+    // [FIX] Hapus HANYA file milik hash tertentu — bukan semua file
+    @Query("DELETE FROM files WHERE hash = :hash")
+    suspend fun deleteAllByHash(hash: String)
 
-    @Query("DELETE FROM files WHERE id = :id")
-    suspend fun deleteById(id: String)
+    @Query("DELETE FROM files WHERE id = :id AND hash = :hash")
+    suspend fun deleteById(id: String, hash: String)
 
-    @Query("DELETE FROM files WHERE path = :path OR path LIKE :prefix")
-    suspend fun deleteByPathPrefix(path: String, prefix: String)
+    @Query("DELETE FROM files WHERE (path = :path OR path LIKE :prefix) AND hash = :hash")
+    suspend fun deleteByPathPrefix(path: String, prefix: String, hash: String)
 
-    @Query("UPDATE files SET path = :newPath WHERE id = :id")
-    suspend fun updatePath(id: String, newPath: String)
+    @Query("UPDATE files SET path = :newPath WHERE id = :id AND hash = :hash")
+    suspend fun updatePath(id: String, newPath: String, hash: String)
 }
 
 @Dao
@@ -68,7 +75,40 @@ interface MetadataSyncDao {
     suspend fun insertOrReplace(metadata: MetadataSyncEntity)
 }
 
-@Database(entities = [FileEntity::class, MetadataSyncEntity::class], version = 1)
+// [FIX] Migration dari versi 1 (tanpa hash) ke versi 2 (dengan hash)
+val MIGRATION_1_2 = object : Migration(1, 2) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        // Simpan tabel lama
+        database.execSQL("ALTER TABLE files RENAME TO files_old")
+
+        // Buat tabel baru dengan kolom hash dan composite primary key
+        database.execSQL("""
+            CREATE TABLE files (
+                id TEXT NOT NULL,
+                hash TEXT NOT NULL,
+                path TEXT NOT NULL,
+                parent_path TEXT NOT NULL,
+                name TEXT NOT NULL,
+                size INTEGER NOT NULL DEFAULT 0,
+                created_at INTEGER NOT NULL DEFAULT 0,
+                message_ids TEXT NOT NULL,
+                PRIMARY KEY(id, hash)
+            )
+        """)
+
+        // Index untuk performa query
+        database.execSQL("CREATE INDEX IF NOT EXISTS idx_hash ON files(hash)")
+        database.execSQL("CREATE INDEX IF NOT EXISTS idx_path ON files(path, hash)")
+        database.execSQL("CREATE INDEX IF NOT EXISTS idx_parent ON files(parent_path, hash)")
+
+        // Data lama tidak bisa di-migrate karena tidak ada info hash-nya
+        // App akan sync ulang dari Discord saat pertama connect
+        database.execSQL("DROP TABLE files_old")
+    }
+}
+
+// [FIX] Version naik ke 2
+@Database(entities = [FileEntity::class, MetadataSyncEntity::class], version = 2)
 abstract class DisboxDatabase : RoomDatabase() {
     abstract fun fileDao(): FileDao
     abstract fun metadataSyncDao(): MetadataSyncDao
@@ -83,7 +123,9 @@ abstract class DisboxDatabase : RoomDatabase() {
                     context.applicationContext,
                     DisboxDatabase::class.java,
                     "disbox.db"
-                ).build()
+                )
+                    .addMigrations(MIGRATION_1_2) // [FIX] Daftarkan migration
+                    .build()
                 INSTANCE = instance
                 instance
             }

@@ -22,6 +22,11 @@ android {
     }
 
     buildTypes {
+        debug {
+            // Package ID berbeda → bisa install berbarengan dengan release
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
+        }
         release {
             isMinifyEnabled = false
             signingConfig = signingConfigs.getByName("debug")

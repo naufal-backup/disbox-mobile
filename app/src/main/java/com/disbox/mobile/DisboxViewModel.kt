@@ -16,7 +16,7 @@ import java.io.File
 
 class DisboxViewModel(application: Application) : AndroidViewModel(application) {
     private val prefs = application.getSharedPreferences("disbox_prefs", Context.MODE_PRIVATE)
-    
+
     var isConnected by mutableStateOf(false)
     var webhookUrl by mutableStateOf(prefs.getString("webhook_url", "") ?: "")
     var api by mutableStateOf<DisboxApi?>(null)
@@ -25,15 +25,15 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
     var isLoading by mutableStateOf(false)
     var progressMap by mutableStateOf<Map<String, Float>>(emptyMap())
     var selectionSet by mutableStateOf<Set<String>>(emptySet())
-    
+
     var theme by mutableStateOf(prefs.getString("theme", "dark") ?: "dark")
     var chunkSize by mutableStateOf(prefs.getInt("chunk_size", 10 * 1024 * 1024))
     var metadataStatus by mutableStateOf("synced")
-    
+
     var viewMode by mutableStateOf(prefs.getString("view_mode", "grid") ?: "grid")
     var zoomLevel by mutableStateOf(prefs.getFloat("zoom_level", 1f))
 
-    var moveCopyMode by mutableStateOf<String?>(null) // "move" or "copy"
+    var moveCopyMode by mutableStateOf<String?>(null)
     var moveCopyItems by mutableStateOf<Set<String>>(emptySet())
 
     private val notificationHelper = NotificationHelper(application)
@@ -46,20 +46,37 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun connect(url: String) {
+        // [FIX] Reset semua state UI sebelum load webhook baru
+        // Mencegah data lama dari webhook sebelumnya tampil saat ganti webhook
+        pollJob?.cancel()
+        isConnected = false
+        allFiles = emptyList()
+        currentPath = "/"
+        selectionSet = emptySet()
+        moveCopyMode = null
+        moveCopyItems = emptySet()
+        metadataStatus = "synced"
+
         webhookUrl = url
         prefs.edit().putString("webhook_url", url).apply()
-        api = DisboxApi(getApplication(), url)
-        api?.chunkSize = chunkSize
-        api?.onStatusChange = { metadataStatus = it }
+
+        // [FIX] Buat instance DisboxApi baru — lastSyncedId otomatis null
+        // Ini memastikan hash webhook baru di-resolve dan sync dari Discord
+        val newApi = DisboxApi(getApplication(), url)
+        newApi.chunkSize = chunkSize
+        newApi.onStatusChange = { metadataStatus = it }
+        api = newApi
+
         viewModelScope.launch {
             isLoading = true
             try {
-                api!!.init()
-                allFiles = api!!.getFileSystem()
+                newApi.init()
+                allFiles = newApi.getFileSystem()
                 isConnected = true
                 startPolling()
             } catch (e: Exception) {
                 e.printStackTrace()
+                isConnected = false
             } finally {
                 isLoading = false
             }
@@ -109,6 +126,8 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
         currentPath = "/"
         selectionSet = emptySet()
         webhookUrl = ""
+        moveCopyMode = null
+        moveCopyItems = emptySet()
     }
 
     fun refresh(silent: Boolean = false) {
@@ -135,9 +154,11 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun deletePaths(pathsOrIds: List<String>) {
-        // Optimistic UI: Filter out items immediately
+        // Optimistic UI
         allFiles = allFiles.filterNot { f ->
-            pathsOrIds.contains(f.id) || pathsOrIds.contains(f.path) || pathsOrIds.any { p -> f.path.startsWith("$p/") }
+            pathsOrIds.contains(f.id) ||
+            pathsOrIds.contains(f.path) ||
+            pathsOrIds.any { p -> f.path.startsWith("$p/") }
         }
         selectionSet = emptySet()
 
@@ -145,10 +166,9 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
             metadataStatus = "uploading"
             try {
                 api?.bulkDelete(pathsOrIds)
-                // Refresh Ground Truth after successful background delete
                 allFiles = api?.getFileSystem() ?: emptyList()
             } catch (e: Exception) {
-                refresh() // Rollback on error
+                refresh()
             }
         }
     }
@@ -170,7 +190,8 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             api?.let { disbox ->
                 val fileName = getFileName(uri)
-                val path = if (currentPath == "/") fileName else "${currentPath.trimStart('/')}/$fileName"
+                val path = if (currentPath == "/") fileName
+                           else "${currentPath.trimStart('/')}/$fileName"
                 val notificationId = fileName.hashCode()
                 try {
                     disbox.uploadFile(uri, path) { p ->
@@ -190,7 +211,10 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
     fun downloadFile(file: DisboxFile) {
         viewModelScope.launch {
             val name = file.path.split("/").last()
-            val destDir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "disbox_downloads")
+            val destDir = File(
+                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+                "disbox_downloads"
+            )
             if (!destDir.exists()) destDir.mkdirs()
             val destFile = File(destDir, name)
             val notificationId = name.hashCode()
@@ -252,26 +276,18 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
         val mode = moveCopyMode ?: return
         val items = moveCopyItems
         val targetPath = if (destDir == "/") "" else destDir.trimStart('/')
-        
+
         viewModelScope.launch {
             isLoading = true
             try {
                 items.forEach { idOrPath ->
                     val file = allFiles.find { it.id == idOrPath || it.path == idOrPath }
                     if (mode == "move") {
-                        if (file != null) {
-                            api?.movePath(file.path, targetPath, file.id)
-                        } else {
-                            // Folder
-                            api?.movePath(idOrPath, targetPath, null)
-                        }
+                        if (file != null) api?.movePath(file.path, targetPath, file.id)
+                        else api?.movePath(idOrPath, targetPath, null)
                     } else {
-                        if (file != null) {
-                            api?.copyPath(file.path, targetPath, file.id)
-                        } else {
-                            // Folder
-                            api?.copyPath(idOrPath, targetPath, null)
-                        }
+                        if (file != null) api?.copyPath(file.path, targetPath, file.id)
+                        else api?.copyPath(idOrPath, targetPath, null)
                     }
                 }
                 allFiles = api?.getFileSystem() ?: emptyList()
