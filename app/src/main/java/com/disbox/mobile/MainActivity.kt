@@ -113,6 +113,61 @@ fun isPdfFile(name: String): Boolean {
 }
 
 @Composable
+fun FileThumbnail(file: DisboxFile, viewModel: DisboxViewModel, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val name = file.path.split("/").last()
+    val isImage = isImageFile(name)
+    var thumbFile by remember { mutableStateOf<File?>(null) }
+    var isLoading by remember { mutableStateOf(false) }
+
+    val cacheKey = "thumb_${file.id}"
+    val targetFile = File(context.cacheDir, cacheKey)
+
+    LaunchedEffect(file.id, viewModel.showPreviews) {
+        if (!viewModel.showPreviews || !isImage) {
+            thumbFile = null
+            return@LaunchedEffect
+        }
+
+        if (targetFile.exists()) {
+            thumbFile = targetFile
+            return@LaunchedEffect
+        }
+
+        // Download thumbnail
+        isLoading = true
+        try {
+            viewModel.api?.downloadFile(file, targetFile) { }
+            if (targetFile.exists()) {
+                thumbFile = targetFile
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        } finally {
+            isLoading = false
+        }
+    }
+
+    Box(modifier = modifier, contentAlignment = Alignment.Center) {
+        if (thumbFile != null) {
+            AsyncImage(
+                model = ImageRequest.Builder(context)
+                    .data(thumbFile)
+                    .crossfade(true)
+                    .build(),
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = androidx.compose.ui.layout.ContentScale.Crop
+            )
+        } else if (isLoading) {
+            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+        } else {
+            Text(getFileIcon(name), fontSize = 24.sp)
+        }
+    }
+}
+
+@Composable
 fun MetadataStatusIndicator(status: String) {
     val (color, label, icon) = when (status) {
         "synced" -> Triple(Color(0xFF00D4AA), "Synced", Icons.Default.CheckCircle)
@@ -127,13 +182,13 @@ fun MetadataStatusIndicator(status: String) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
-            .clip(RoundedCornerShape(8.dp))
-            .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
-            .padding(horizontal = 8.dp, vertical = 4.dp)
+            .clip(RoundedCornerShape(6.dp))
+            .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+            .padding(horizontal = 6.dp, vertical = 2.dp)
     ) {
-        Icon(icon, null, tint = color, modifier = Modifier.size(14.dp))
-        Spacer(modifier = Modifier.width(6.dp))
-        Text(label, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+        Icon(icon, null, tint = color, modifier = Modifier.size(12.dp))
+        Spacer(modifier = Modifier.width(4.dp))
+        Text(label, fontSize = 9.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
     }
 }
 
@@ -294,6 +349,7 @@ fun DisboxApp(viewModel: DisboxViewModel, onFinish: () -> Unit) {
 @Composable
 fun LoginScreen(viewModel: DisboxViewModel) {
     var url by remember { mutableStateOf(viewModel.webhookUrl) }
+
     Column(
         modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(32.dp),
         verticalArrangement = Arrangement.Center,
@@ -399,20 +455,17 @@ fun DriveScreen(viewModel: DisboxViewModel) {
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            // [UI] Ganti TopAppBar dengan Column+Row biasa
-            // TopAppBar M3 punya internal padding hardcoded yang tidak bisa dioverride
-            // sehingga breadcrumb dan status badge terpotong
+            // [UI] Ganti TopAppBar dengan Column+Row biasa yang lebih compact
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(MaterialTheme.colorScheme.surface)
                     .statusBarsPadding()
             ) {
-                // Baris atas: breadcrumb + action buttons
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(start = 16.dp, end = 4.dp, top = 8.dp, bottom = 4.dp),
+                        .padding(start = 12.dp, end = 4.dp, top = 2.dp, bottom = 2.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     // Breadcrumb mengisi sisa ruang
@@ -422,6 +475,11 @@ fun DriveScreen(viewModel: DisboxViewModel) {
                             onNavigate = { viewModel.navigate(it) }
                         )
                     }
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    // Status badge (Metadata) dipindah ke baris yang sama agar tidak tebal
+                    MetadataStatusIndicator(status = viewModel.metadataStatus)
 
                     // Action icons
                     IconButton(onClick = { viewModel.setView(if (viewModel.viewMode == "grid") "list" else "grid") }) {
@@ -463,16 +521,6 @@ fun DriveScreen(viewModel: DisboxViewModel) {
                             Icon(Icons.Default.Refresh, contentDescription = null)
                         }
                     }
-                }
-
-                // Baris bawah: status badge
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = 16.dp, end = 16.dp, bottom = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    MetadataStatusIndicator(status = viewModel.metadataStatus)
                 }
 
                 HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f))
@@ -539,10 +587,11 @@ fun DriveScreen(viewModel: DisboxViewModel) {
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         items(subDirs) { (name, fullPath) ->
-                            GridFileItem(name = name, isFolder = true,
+                            GridFileItem(file = null, name = name, isFolder = true,
                                 isSelected = viewModel.selectionSet.contains(fullPath),
                                 isSelectionMode = viewModel.selectionSet.isNotEmpty(),
                                 zoom = viewModel.zoomLevel,
+                                viewModel = viewModel,
                                 onLongClick = { viewModel.toggleSelection(fullPath) },
                                 onClick = {
                                     if (viewModel.selectionSet.isNotEmpty()) viewModel.toggleSelection(fullPath)
@@ -552,10 +601,11 @@ fun DriveScreen(viewModel: DisboxViewModel) {
                         }
                         items(currentFiles.filter { !it.path.endsWith(".keep") }) { file ->
                             val name = file.path.split("/").last()
-                            GridFileItem(name = name, isFolder = false, size = file.size,
+                            GridFileItem(file = file, name = name, isFolder = false, size = file.size,
                                 isSelected = viewModel.selectionSet.contains(file.id),
                                 isSelectionMode = viewModel.selectionSet.isNotEmpty(),
                                 zoom = viewModel.zoomLevel,
+                                viewModel = viewModel,
                                 onLongClick = { viewModel.toggleSelection(file.id) },
                                 onClick = {
                                     if (viewModel.selectionSet.isNotEmpty()) viewModel.toggleSelection(file.id)
@@ -567,10 +617,11 @@ fun DriveScreen(viewModel: DisboxViewModel) {
                 } else {
                     LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(vertical = 4.dp)) {
                         items(subDirs) { (name, fullPath) ->
-                            ListFileItem(name = name, isFolder = true,
+                            ListFileItem(file = null, name = name, isFolder = true,
                                 isSelected = viewModel.selectionSet.contains(fullPath),
                                 isSelectionMode = viewModel.selectionSet.isNotEmpty(),
                                 zoom = viewModel.zoomLevel,
+                                viewModel = viewModel,
                                 onLongClick = { viewModel.toggleSelection(fullPath) },
                                 onClick = {
                                     if (viewModel.selectionSet.isNotEmpty()) viewModel.toggleSelection(fullPath)
@@ -580,10 +631,11 @@ fun DriveScreen(viewModel: DisboxViewModel) {
                         }
                         items(currentFiles.filter { !it.path.endsWith(".keep") }) { file ->
                             val name = file.path.split("/").last()
-                            ListFileItem(name = name, isFolder = false, size = file.size,
+                            ListFileItem(file = file, name = name, isFolder = false, size = file.size,
                                 isSelected = viewModel.selectionSet.contains(file.id),
                                 isSelectionMode = viewModel.selectionSet.isNotEmpty(),
                                 zoom = viewModel.zoomLevel,
+                                viewModel = viewModel,
                                 onLongClick = { viewModel.toggleSelection(file.id) },
                                 onClick = {
                                     if (viewModel.selectionSet.isNotEmpty()) viewModel.toggleSelection(file.id)
@@ -840,7 +892,7 @@ fun FilePreviewScreen(file: DisboxFile, viewModel: DisboxViewModel, onClose: () 
 
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-fun ListFileItem(name: String, isFolder: Boolean, size: Long = 0, isSelected: Boolean, isSelectionMode: Boolean, zoom: Float, onClick: () -> Unit, onLongClick: () -> Unit) {
+fun ListFileItem(file: DisboxFile?, name: String, isFolder: Boolean, size: Long = 0, isSelected: Boolean, isSelectionMode: Boolean, zoom: Float, viewModel: DisboxViewModel, onClick: () -> Unit, onLongClick: () -> Unit) {
     val baseHeight = 64.dp  // [UI] Sedikit lebih ramping dari 72dp
 
     // [UI] Selected style mirip desktop: primary border + background tint
@@ -890,10 +942,13 @@ fun ListFileItem(name: String, isFolder: Boolean, size: Long = 0, isSelected: Bo
                 .background(if (isFolder) Color(0xFFF0A500).copy(alpha = 0.12f) else MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)),
             contentAlignment = Alignment.Center
         ) {
-            if (isFolder) {
-                Icon(Icons.Default.Folder, contentDescription = null, tint = Color(0xFFF0A500), modifier = Modifier.size(22.dp * zoom))
+            if (isFolder || file == null) {
+                Icon(if (isFolder) Icons.Default.Folder else Icons.Default.InsertDriveFile, 
+                    contentDescription = null, 
+                    tint = if (isFolder) Color(0xFFF0A500) else MaterialTheme.colorScheme.primary, 
+                    modifier = Modifier.size(22.dp * zoom))
             } else {
-                Text(getFileIcon(name), fontSize = 20.sp * zoom)
+                FileThumbnail(file, viewModel, modifier = Modifier.fillMaxSize())
             }
         }
         Spacer(modifier = Modifier.width(14.dp))
@@ -912,7 +967,7 @@ fun ListFileItem(name: String, isFolder: Boolean, size: Long = 0, isSelected: Bo
 
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-fun GridFileItem(name: String, isFolder: Boolean, size: Long = 0, isSelected: Boolean, isSelectionMode: Boolean, zoom: Float, onClick: () -> Unit, onLongClick: () -> Unit) {
+fun GridFileItem(file: DisboxFile?, name: String, isFolder: Boolean, size: Long = 0, isSelected: Boolean, isSelectionMode: Boolean, zoom: Float, viewModel: DisboxViewModel, onClick: () -> Unit, onLongClick: () -> Unit) {
     // [UI] Selected style mirip desktop: primary border + background tint
     val bgColor = when {
         isSelected -> MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
@@ -962,10 +1017,13 @@ fun GridFileItem(name: String, isFolder: Boolean, size: Long = 0, isSelected: Bo
                     .background(if (isFolder) Color(0xFFF0A500).copy(alpha = 0.12f) else MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)),
                 contentAlignment = Alignment.Center
             ) {
-                if (isFolder) {
-                    Icon(Icons.Default.Folder, contentDescription = null, tint = Color(0xFFF0A500), modifier = Modifier.size(26.dp * zoom))
+                if (isFolder || file == null) {
+                    Icon(if (isFolder) Icons.Default.Folder else Icons.Default.InsertDriveFile, 
+                        contentDescription = null, 
+                        tint = if (isFolder) Color(0xFFF0A500) else MaterialTheme.colorScheme.primary, 
+                        modifier = Modifier.size(26.dp * zoom))
                 } else {
-                    Text(getFileIcon(name), fontSize = 26.sp * zoom)
+                    FileThumbnail(file, viewModel, modifier = Modifier.fillMaxSize())
                 }
             }
             Spacer(modifier = Modifier.height(6.dp))
@@ -1077,6 +1135,17 @@ fun SettingsScreen(viewModel: DisboxViewModel) {
                     }
                     Switch(checked = viewModel.theme == "dark", onCheckedChange = { viewModel.toggleTheme() })
                 }
+                
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                Row(modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Column {
+                        Text("Live File Previews", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                        Text("Show images as grid icons", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                    }
+                    Switch(checked = viewModel.showPreviews, onCheckedChange = { viewModel.updatePreviews(it) })
+                }
             }
         }
 
@@ -1132,11 +1201,7 @@ fun SettingsScreen(viewModel: DisboxViewModel) {
             Column(modifier = Modifier.padding(20.dp)) {
                 Text("Developer Credits", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                 Spacer(modifier = Modifier.height(12.dp))
-                Text("Naufal Gastiadirrijal Fawwaz Alamsyah", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp)
-                Spacer(modifier = Modifier.height(4.dp))
-                Text("GitHub: naufal-backup", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
-                Text("Email: naufalalamsyah453@gmail.com", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
-                Text("LinkedIn: linkedin.com/in/naufal-gastiadirrijal-fawwaz-alamsyah-a34b43363", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
+                Text("GitHub: naufal-backup", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp)
             }
         }
 

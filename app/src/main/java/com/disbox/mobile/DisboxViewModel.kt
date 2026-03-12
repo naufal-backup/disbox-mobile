@@ -32,6 +32,7 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
 
     var viewMode by mutableStateOf(prefs.getString("view_mode", "grid") ?: "grid")
     var zoomLevel by mutableStateOf(prefs.getFloat("zoom_level", 1f))
+    var showPreviews by mutableStateOf(prefs.getBoolean("show_previews", true))
 
     var moveCopyMode by mutableStateOf<String?>(null)
     var moveCopyItems by mutableStateOf<Set<String>>(emptySet())
@@ -103,6 +104,11 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
     fun setZoom(level: Float) {
         zoomLevel = level
         prefs.edit().putFloat("zoom_level", level).apply()
+    }
+
+    fun updatePreviews(enabled: Boolean) {
+        showPreviews = enabled
+        prefs.edit().putBoolean("show_previews", enabled).apply()
     }
 
     fun setChunk(size: Int) {

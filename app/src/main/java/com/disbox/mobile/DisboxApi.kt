@@ -29,6 +29,8 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
     private val client = OkHttpClient()
     private val gson = Gson()
     var hashedWebhook: String? = null
+    private var encryptionKey: ByteArray? = null
+    
     // [FIX] lastSyncedId = null pada setiap instance baru
     // Karena DisboxApi selalu di-instantiate ulang saat ganti webhook,
     // ini memastikan sync selalu download ulang dari Discord
@@ -48,6 +50,7 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
 
     suspend fun init(forceSyncId: String? = null): String = withContext(Dispatchers.IO) {
         hashedWebhook = hashWebhook(webhookUrl)
+        encryptionKey = CryptoUtils.deriveKey(webhookUrl)
         migrateJsonToSqlite()
         syncMetadata(forceSyncId)
         hashedWebhook!!
@@ -151,7 +154,12 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
         val attRes = client.newCall(attReq).execute()
         if (!attRes.isSuccessful) throw Exception("Failed to download metadata file")
 
-        val attBody = attRes.body?.string() ?: throw Exception("Empty metadata file")
+        val encryptedBytes = attRes.body?.bytes() ?: throw Exception("Empty metadata file")
+        
+        // [ENCRYPT] Decrypt metadata
+        val decryptedBytes = encryptionKey?.let { CryptoUtils.decrypt(encryptedBytes, it) } ?: encryptedBytes
+        val attBody = String(decryptedBytes, Charsets.UTF_8)
+
         gson.fromJson(attBody, object : TypeToken<List<DisboxFile>>() {}.type)
     }
 
@@ -279,12 +287,16 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
         if (files.isEmpty()) return@withContext
         val json = gson.toJson(files)
 
+        // [ENCRYPT] Encrypt metadata
+        val encryptedBytes = encryptionKey?.let { CryptoUtils.encrypt(json.toByteArray(Charsets.UTF_8), it) }
+            ?: json.toByteArray(Charsets.UTF_8)
+
         onStatusChange?.invoke("uploading")
         val body = MultipartBody.Builder()
             .setType(MultipartBody.FORM)
             .addFormDataPart(
                 "file", "disbox_metadata.json",
-                json.toRequestBody("application/json".toMediaTypeOrNull())
+                encryptedBytes.toRequestBody("application/octet-stream".toMediaTypeOrNull())
             )
             .build()
 
@@ -442,7 +454,11 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
                 }
                 if (bytesRead == 0 && i > 0) break
 
-                val chunkData = buffer.copyOf(bytesRead)
+                var chunkData = buffer.copyOf(bytesRead)
+                
+                // [ENCRYPT] Encrypt chunk
+                chunkData = encryptionKey?.let { CryptoUtils.encrypt(chunkData, it) } ?: chunkData
+
                 val chunkName = "${fileId}_${name}.part$i"
 
                 val body = MultipartBody.Builder()
@@ -517,7 +533,12 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
                 val chunkRes = client.newCall(chunkReq).execute()
                 if (!chunkRes.isSuccessful) throw Exception("Failed to download chunk")
 
-                chunkRes.body?.byteStream()?.use { it.copyTo(out) }
+                var chunkData = chunkRes.body?.bytes() ?: throw Exception("Empty chunk body")
+                
+                // [ENCRYPT] Decrypt chunk
+                chunkData = encryptionKey?.let { CryptoUtils.decrypt(chunkData, it) } ?: chunkData
+
+                out.write(chunkData)
                 onProgress((i + 1).toFloat() / messageIds.size)
             }
         }
