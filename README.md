@@ -34,6 +34,13 @@ Disbox Mobile adalah pendamping seluler untuk ekosistem Disbox, memungkinkan And
 2.  Izinkan instalasi dari sumber tidak dikenal di pengaturan Android.
 3.  Buka aplikasi dan tempelkan URL Webhook Anda.
 
+## ⚙️ Next Update
+# Minor
+1.  Implement seamless notification Download/Upload
+2.  Add some tweak on UI/UX functionality
+
+# Major
+1.  Preview Documents File
 ## 🤝 Kontribusi
 
 Kami menerima laporan bug dan saran fitur!
