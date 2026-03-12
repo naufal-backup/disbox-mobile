@@ -2,7 +2,14 @@
 
 Disbox Mobile adalah pendamping seluler untuk ekosistem Disbox, memungkinkan Anda mengelola penyimpanan awan berbasis Discord langsung dari perangkat Android. Dibangun menggunakan **Jetpack Compose** dan **Kotlin**, aplikasi ini menawarkan pengalaman pengelolaan file yang modern, responsif, dan aman.
 
-![Main UI](https://raw.githubusercontent.com/naufal-backup/disbox-linux/main/preview/file_explorer.png) *(Preview Desktop)*
+<p align="center">
+  <img src="preview/Login.jpeg" width="22%" />
+  <img src="preview/File%20Manager.jpeg" width="22%" />
+  <img src="preview/Selecting%20FIle.jpeg" width="22%" />
+  <img src="preview/Settings%20Page.jpeg" width="22%" />
+  <br>
+  <em>Mobile Preview: Login, File Explorer, Bulk Selection, and Settings</em>
+</p>
 
 ## 🚀 Fitur Utama
 
