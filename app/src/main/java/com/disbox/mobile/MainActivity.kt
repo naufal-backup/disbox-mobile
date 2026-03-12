@@ -201,7 +201,15 @@ fun LoginScreen(viewModel: DisboxViewModel) {
         Spacer(modifier = Modifier.height(24.dp))
         Text("Disbox", fontSize = 32.sp, fontWeight = FontWeight.ExtraBold, fontFamily = FontFamily.SansSerif, color = MaterialTheme.colorScheme.onBackground)
         Text("Discord Cloud Storage", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
-        Spacer(modifier = Modifier.height(48.dp))
+        
+        Spacer(modifier = Modifier.height(16.dp))
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("Created by naufal-backup", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+            Text("Email: naufalalamsyah453@gmail.com", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
+            Text("LinkedIn: linkedin.com/in/naufal-gastiadirrijal-fawwaz-alamsyah-a34b43363", fontSize = 8.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f), textAlign = TextAlign.Center)
+        }
+
+        Spacer(modifier = Modifier.height(32.dp))
         OutlinedTextField(
             value = url,
             onValueChange = { url = it },
@@ -787,6 +795,21 @@ fun SettingsScreen(viewModel: DisboxViewModel) {
                 ) {
                     Text("Disconnect Session")
                 }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+            Column(modifier = Modifier.padding(20.dp)) {
+                Text("Developer Credits", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                Spacer(modifier = Modifier.height(12.dp))
+                Text("Naufal Gastiadirrijal Fawwaz Alamsyah", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp)
+                Spacer(modifier = Modifier.height(4.dp))
+                Text("GitHub: naufal-backup", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
+                Text("Email: naufalalamsyah453@gmail.com", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
+                Text("LinkedIn: linkedin.com/in/naufal-gastiadirrijal-fawwaz-alamsyah-a34b43363", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
             }
         }
         
