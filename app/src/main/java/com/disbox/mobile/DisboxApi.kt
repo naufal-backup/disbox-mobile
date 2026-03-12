@@ -4,6 +4,11 @@ import android.content.Context
 import android.net.Uri
 import android.os.Environment
 import android.provider.OpenableColumns
+import androidx.room.*
+import androidx.room.withTransaction
+import com.disbox.mobile.DisboxDatabase
+import com.disbox.mobile.FileEntity
+import com.disbox.mobile.MetadataSyncEntity
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.Dispatchers

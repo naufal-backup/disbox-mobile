@@ -48,3 +48,4 @@ google-services.json
 # Android Profiler
 *.hprof
 /.gradle
+/app/build

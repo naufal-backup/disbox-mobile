@@ -1,7 +1,7 @@
 {
     "logs": [
         {
-            "outputFile": "com.disbox.mobile.app-mergeDebugResources-41:/values-lv/values-lv.xml",
+            "outputFile": "com.disbox.mobile.app-mergeDebugResources-45:/values-lv/values-lv.xml",
             "map": [
                 {
                     "source": "/home/tb/.gradle/caches/8.10.2/transforms/b7e1b4a62a283341bfbd6234c999e5db/transformed/material3-release/res/values-lv/values-lv.xml",

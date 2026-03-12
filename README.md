@@ -15,9 +15,11 @@ Disbox Mobile adalah pendamping seluler untuk ekosistem Disbox, memungkinkan And
 
 *   **Login Otomatis:** Simpan Webhook Anda satu kali dan hubungkan secara otomatis di sesi berikutnya.
 *   **Virtual File System:** Struktur folder yang identik dengan versi desktop.
+*   **Room Database (SQLite):** [BARU] Metadata kini disimpan di database Room yang super cepat dan hemat memori.
+*   **Rolling Snapshot:** [BARU] Sistem cadangan 3 snapshot metadata terbaru agar data tetap aman meskipun ada pesan Discord yang terhapus.
 *   **Sinkronisasi Real-time:** Deteksi perubahan file dari desktop secara otomatis setiap 30 detik.
 *   **Mode Tampilan Fleksibel:** Pilih antara mode **Grid** atau **List** dengan slider zoom untuk mengatur ukuran item.
-*   **Pratinjau Dokumen & Gambar:** Lihat file `.txt`, `.md`, `.json`, `.png`, `.jpg`, dll langsung di aplikasi.
+*   **Pratinjau Dokumen & Gambar:** Lihat file `.txt`, `.md`, `.json`, `.png`, `.jpg`, `.pdf`, dll langsung di aplikasi.
 *   **Notifikasi Latar Belakang:** Pantau progres upload dan download melalui panel notifikasi Android.
 *   **Manajemen Tier:** Pilihan ukuran chunk (10MB Free, 25MB Nitro, 500MB Premium) sesuai limit akun Discord.
 *   **Keamanan:** Data metadata dienkripsi secara ringan dan dikirim langsung ke Discord tanpa server perantara.
@@ -35,11 +37,9 @@ Disbox Mobile adalah pendamping seluler untuk ekosistem Disbox, memungkinkan And
 3.  Buka aplikasi dan tempelkan URL Webhook Anda.
 
 ## ⚙️ Next Update
-### Minor
-1.  Implement seamless notification Download/Upload
-2.  Add some tweak on UI/UX functionality
 ### Major
-1.  Preview Documents File
+1.  Video/Audio Streaming Player
+2.  Encrypt Individual Files
 
 ## 🤝 Kontribusi
 

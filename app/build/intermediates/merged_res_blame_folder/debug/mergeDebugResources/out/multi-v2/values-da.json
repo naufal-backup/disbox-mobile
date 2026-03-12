@@ -1,7 +1,7 @@
 {
     "logs": [
         {
-            "outputFile": "com.disbox.mobile.app-mergeDebugResources-41:/values-da/values-da.xml",
+            "outputFile": "com.disbox.mobile.app-mergeDebugResources-45:/values-da/values-da.xml",
             "map": [
                 {
                     "source": "/home/tb/.gradle/caches/8.10.2/transforms/9bd894873c0a5554a869bf5c4eaa253c/transformed/foundation-release/res/values-da/values-da.xml",
