@@ -1,6 +1,7 @@
 package com.disbox.mobile
 
 import android.Manifest
+import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -9,6 +10,7 @@ import android.os.Bundle
 import android.os.Environment
 import android.provider.Settings
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -17,6 +19,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -27,6 +30,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -43,6 +47,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.disbox.mobile.ui.theme.DisboxMobileTheme
 import java.io.File
 
@@ -52,7 +58,9 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            DisboxApp(viewModel)
+            // [FIX] Tombol back Android — tangkap di level Activity
+            // Behavior dihandle di dalam DisboxApp per-tab
+            DisboxApp(viewModel, onFinish = { finish() })
         }
         checkPermissions()
     }
@@ -95,6 +103,15 @@ fun getFileIcon(name: String): String {
     }
 }
 
+fun isImageFile(name: String): Boolean {
+    val ext = name.split(".").last().lowercase()
+    return ext in listOf("jpg", "jpeg", "png", "gif", "webp")
+}
+
+fun isPdfFile(name: String): Boolean {
+    return name.split(".").last().lowercase() == "pdf"
+}
+
 @Composable
 fun MetadataStatusIndicator(status: String) {
     val (color, label, icon) = when (status) {
@@ -120,12 +137,103 @@ fun MetadataStatusIndicator(status: String) {
     }
 }
 
+// [UI] Breadcrumb address bar — logika sama seperti desktop
+// Truncate folder tengah dengan "..." jika path terlalu panjang
+@Composable
+fun BreadcrumbBar(currentPath: String, onNavigate: (String) -> Unit) {
+    val parts = if (currentPath == "/") emptyList()
+                else currentPath.trim('/').split("/").filter { it.isNotEmpty() }
+
+    val scrollState = rememberScrollState()
+
+    LaunchedEffect(currentPath) {
+        scrollState.animateScrollTo(scrollState.maxValue)
+    }
+
+    Row(
+        modifier = Modifier.horizontalScroll(scrollState),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // [UI] Pakai Icon + clickable, bukan IconButton (IconButton min 48dp, terlalu besar)
+        Icon(
+            Icons.Default.Home,
+            contentDescription = "Root",
+            tint = if (parts.isEmpty()) MaterialTheme.colorScheme.primary
+                   else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+            modifier = Modifier
+                .size(18.dp)
+                .clickable { onNavigate("/") }
+        )
+
+        if (parts.isNotEmpty()) {
+            val visibleParts = when {
+                parts.size <= 3 -> parts.mapIndexed { i, name -> i to name }
+                else -> listOf(
+                    0 to parts.first(),
+                    -1 to "...",
+                    parts.size - 1 to parts.last()
+                )
+            }
+
+            visibleParts.forEach { (idx, name) ->
+                Icon(
+                    Icons.Default.ChevronRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f),
+                    modifier = Modifier.size(14.dp)
+                )
+
+                if (idx == -1) {
+                    Text(
+                        "...",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
+                        modifier = Modifier.padding(horizontal = 2.dp)
+                    )
+                } else {
+                    val isLast = idx == parts.size - 1
+                    val targetPath = "/" + parts.take(idx + 1).joinToString("/")
+                    Text(
+                        name,
+                        fontSize = 12.sp,
+                        fontWeight = if (isLast) FontWeight.SemiBold else FontWeight.Normal,
+                        color = if (isLast) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                        modifier = Modifier
+                            .padding(horizontal = 2.dp)
+                            .then(
+                                if (!isLast) Modifier.clickable { onNavigate(targetPath) }
+                                else Modifier
+                            )
+                    )
+                }
+            }
+        }
+    }
+}
+
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DisboxApp(viewModel: DisboxViewModel) {
+fun DisboxApp(viewModel: DisboxViewModel, onFinish: () -> Unit) {
     var selectedTab by remember { mutableStateOf(0) }
     val tabs = listOf("Drive", "Recent", "Starred", "Trash", "Settings")
     val icons = listOf(Icons.Default.Storage, Icons.Default.History, Icons.Default.Star, Icons.Default.Delete, Icons.Default.Settings)
+
+    // [FIX] Tombol back Android
+    BackHandler(enabled = true) {
+        when {
+            // Jika di tab selain Drive → kembali ke Drive
+            selectedTab != 0 -> selectedTab = 0
+            // Jika di Drive, bukan root → naik satu level
+            viewModel.currentPath != "/" -> {
+                val p = viewModel.currentPath.split("/").filter { it.isNotEmpty() }.dropLast(1).joinToString("/")
+                viewModel.navigate(if (p.isEmpty()) "/" else "/$p")
+            }
+            // Jika di Drive root → keluar app
+            else -> onFinish()
+        }
+    }
 
     DisboxMobileTheme(darkTheme = viewModel.theme == "dark") {
         if (!viewModel.isConnected && !viewModel.isLoading) {
@@ -173,7 +281,7 @@ fun DisboxApp(viewModel: DisboxViewModel) {
                         4 -> SettingsScreen(viewModel)
                         else -> PlaceholderScreen(tabs[selectedTab])
                     }
-                    
+
                     if (viewModel.progressMap.isNotEmpty()) {
                         TransferPanel(viewModel.progressMap)
                     }
@@ -201,12 +309,10 @@ fun LoginScreen(viewModel: DisboxViewModel) {
         Spacer(modifier = Modifier.height(24.dp))
         Text("Disbox", fontSize = 32.sp, fontWeight = FontWeight.ExtraBold, fontFamily = FontFamily.SansSerif, color = MaterialTheme.colorScheme.onBackground)
         Text("Discord Cloud Storage", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
-        
+
         Spacer(modifier = Modifier.height(16.dp))
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text("Created by naufal-backup", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-            Text("Email: naufalalamsyah453@gmail.com", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
-            Text("LinkedIn: linkedin.com/in/naufal-gastiadirrijal-fawwaz-alamsyah-a34b43363", fontSize = 8.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f), textAlign = TextAlign.Center)
         }
 
         Spacer(modifier = Modifier.height(32.dp))
@@ -249,10 +355,10 @@ fun DriveScreen(viewModel: DisboxViewModel) {
     var folderName by remember { mutableStateOf("") }
     var previewFile by remember { mutableStateOf<DisboxFile?>(null) }
     var showDeleteConfirm by remember { mutableStateOf<List<String>?>(null) }
-    
+
     var showRenameDialog by remember { mutableStateOf(false) }
     var newName by remember { mutableStateOf("") }
-    var itemToRename by remember { mutableStateOf<Pair<String, String?>?>(null) } // Path, Id
+    var itemToRename by remember { mutableStateOf<Pair<String, String?>?>(null) }
 
     val currentFiles = viewModel.allFiles.filter { f ->
         val parts = f.path.split("/").filter { it.isNotEmpty() }
@@ -272,7 +378,7 @@ fun DriveScreen(viewModel: DisboxViewModel) {
         val parts = f.path.split("/").filter { it.isNotEmpty() }
         val dirPath = if (viewModel.currentPath == "/") "" else viewModel.currentPath.trim('/')
         val dParts = dirPath.split("/").filter { it.isNotEmpty() }
-        
+
         if (f.path.endsWith(".keep")) {
             val folderPath = f.path.removeSuffix("/.keep")
             val fParts = folderPath.split("/").filter { it.isNotEmpty() }
@@ -293,84 +399,82 @@ fun DriveScreen(viewModel: DisboxViewModel) {
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            Column {
-                // Address Bar
-                Box(
+            // [UI] Ganti TopAppBar dengan Column+Row biasa
+            // TopAppBar M3 punya internal padding hardcoded yang tidak bisa dioverride
+            // sehingga breadcrumb dan status badge terpotong
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.surface)
+                    .statusBarsPadding()
+            ) {
+                // Baris atas: breadcrumb + action buttons
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(MaterialTheme.colorScheme.surface)
-                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                        .padding(start = 16.dp, end = 4.dp, top = 8.dp, bottom = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.FolderOpen, null, modifier = Modifier.size(12.dp), tint = MaterialTheme.colorScheme.primary)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            viewModel.currentPath, 
-                            fontSize = 11.sp, 
-                            fontWeight = FontWeight.Medium,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                    // Breadcrumb mengisi sisa ruang
+                    Box(modifier = Modifier.weight(1f)) {
+                        BreadcrumbBar(
+                            currentPath = viewModel.currentPath,
+                            onNavigate = { viewModel.navigate(it) }
                         )
                     }
-                }
-                TopAppBar(
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.surface,
-                        titleContentColor = MaterialTheme.colorScheme.onBackground,
-                    ),
-                    title = { 
-                        Text("My Drive", fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                    },
-                    actions = {
-                        MetadataStatusIndicator(status = viewModel.metadataStatus)
-                        
-                        IconButton(onClick = { viewModel.setView(if (viewModel.viewMode == "grid") "list" else "grid") }) {
-                            Icon(if (viewModel.viewMode == "grid") Icons.Default.List else Icons.Default.GridView, null)
-                        }
 
-                        if (viewModel.selectionSet.isNotEmpty()) {
-                            if (viewModel.selectionSet.size == 1) {
-                                IconButton(onClick = {
-                                    val idOrPath = viewModel.selectionSet.first()
-                                    val file = viewModel.allFiles.find { it.id == idOrPath || it.path == idOrPath }
-                                    if (file != null) {
-                                        val name = file.path.split("/").last()
-                                        newName = name
-                                        itemToRename = file.path to file.id
-                                        showRenameDialog = true
-                                    } else {
-                                        // Folder
-                                        newName = idOrPath.split("/").last()
-                                        itemToRename = idOrPath to null
-                                        showRenameDialog = true
-                                    }
-                                }) {
-                                    Icon(Icons.Default.Edit, contentDescription = null)
+                    // Action icons
+                    IconButton(onClick = { viewModel.setView(if (viewModel.viewMode == "grid") "list" else "grid") }) {
+                        Icon(if (viewModel.viewMode == "grid") Icons.Default.List else Icons.Default.GridView, null)
+                    }
+
+                    if (viewModel.selectionSet.isNotEmpty()) {
+                        if (viewModel.selectionSet.size == 1) {
+                            IconButton(onClick = {
+                                val idOrPath = viewModel.selectionSet.first()
+                                val file = viewModel.allFiles.find { it.id == idOrPath || it.path == idOrPath }
+                                if (file != null) {
+                                    newName = file.path.split("/").last()
+                                    itemToRename = file.path to file.id
+                                    showRenameDialog = true
+                                } else {
+                                    newName = idOrPath.split("/").last()
+                                    itemToRename = idOrPath to null
+                                    showRenameDialog = true
                                 }
+                            }) {
+                                Icon(Icons.Default.Edit, contentDescription = null)
                             }
-                            
-                            IconButton(onClick = { viewModel.startMove(viewModel.selectionSet) }) {
-                                Icon(Icons.Default.DriveFileMove, contentDescription = null)
-                            }
-                            
-                            IconButton(onClick = { viewModel.startCopy(viewModel.selectionSet) }) {
-                                Icon(Icons.Default.ContentCopy, contentDescription = null)
-                            }
-
-                            IconButton(onClick = { showDeleteConfirm = viewModel.selectionSet.toList() }) {
-                                Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error)
-                            }
-                            IconButton(onClick = { viewModel.clearSelection() }) {
-                                Icon(Icons.Default.Close, contentDescription = null)
-                            }
-                        } else {
-                            IconButton(onClick = { viewModel.refresh() }) {
-                                Icon(Icons.Default.Refresh, contentDescription = null)
-                            }
+                        }
+                        IconButton(onClick = { viewModel.startMove(viewModel.selectionSet) }) {
+                            Icon(Icons.Default.DriveFileMove, contentDescription = null)
+                        }
+                        IconButton(onClick = { viewModel.startCopy(viewModel.selectionSet) }) {
+                            Icon(Icons.Default.ContentCopy, contentDescription = null)
+                        }
+                        IconButton(onClick = { showDeleteConfirm = viewModel.selectionSet.toList() }) {
+                            Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error)
+                        }
+                        IconButton(onClick = { viewModel.clearSelection() }) {
+                            Icon(Icons.Default.Close, contentDescription = null)
+                        }
+                    } else {
+                        IconButton(onClick = { viewModel.refresh() }) {
+                            Icon(Icons.Default.Refresh, contentDescription = null)
                         }
                     }
-                )
+                }
+
+                // Baris bawah: status badge
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 16.dp, end = 16.dp, bottom = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    MetadataStatusIndicator(status = viewModel.metadataStatus)
+                }
+
                 HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f))
             }
         },
@@ -394,10 +498,10 @@ fun DriveScreen(viewModel: DisboxViewModel) {
                 } else {
                     SmallFloatingActionButton(
                         onClick = { showCreateFolderDialog = true },
-                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
                         modifier = Modifier.padding(bottom = 8.dp)
                     ) {
-                        Icon(Icons.Default.CreateNewFolder, contentDescription = null)
+                        Icon(Icons.Default.CreateNewFolder, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                     }
                     FloatingActionButton(onClick = { filePicker.launch("*/*") }, containerColor = MaterialTheme.colorScheme.primary) {
                         Icon(Icons.Default.Add, contentDescription = null, tint = Color.White)
@@ -408,19 +512,9 @@ fun DriveScreen(viewModel: DisboxViewModel) {
     ) { padding ->
         Column(modifier = Modifier.padding(padding).fillMaxSize()) {
             if (viewModel.isLoading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-            
-            // Tool Area
-            Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                if (viewModel.currentPath != "/") {
-                    Row(modifier = Modifier.clickable {
-                        val p = viewModel.currentPath.split("/").filter { it.isNotEmpty() }.dropLast(1).joinToString("/")
-                        viewModel.navigate(if (p.isEmpty()) "/" else "/$p")
-                    }, verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Back", fontSize = 14.sp)
-                    }
-                }
+
+            // [UI] Tool Area — hapus Back button karena sudah ada di breadcrumb dan tombol back Android
+            Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Spacer(modifier = Modifier.weight(1f))
                 Icon(Icons.Default.ZoomIn, null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(modifier = Modifier.width(8.dp))
@@ -428,7 +522,7 @@ fun DriveScreen(viewModel: DisboxViewModel) {
                     value = viewModel.zoomLevel,
                     onValueChange = { viewModel.setZoom(it) },
                     valueRange = 0.6f..1.5f,
-                    modifier = Modifier.width(100.dp)
+                    modifier = Modifier.width(100.dp).height(32.dp)
                 )
             }
 
@@ -445,8 +539,10 @@ fun DriveScreen(viewModel: DisboxViewModel) {
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         items(subDirs) { (name, fullPath) ->
-                            GridFileItem(name = name, isFolder = true, isSelected = viewModel.selectionSet.contains(fullPath), 
-                                isSelectionMode = viewModel.selectionSet.isNotEmpty(), zoom = viewModel.zoomLevel,
+                            GridFileItem(name = name, isFolder = true,
+                                isSelected = viewModel.selectionSet.contains(fullPath),
+                                isSelectionMode = viewModel.selectionSet.isNotEmpty(),
+                                zoom = viewModel.zoomLevel,
                                 onLongClick = { viewModel.toggleSelection(fullPath) },
                                 onClick = {
                                     if (viewModel.selectionSet.isNotEmpty()) viewModel.toggleSelection(fullPath)
@@ -456,8 +552,10 @@ fun DriveScreen(viewModel: DisboxViewModel) {
                         }
                         items(currentFiles.filter { !it.path.endsWith(".keep") }) { file ->
                             val name = file.path.split("/").last()
-                            GridFileItem(name = name, isFolder = false, size = file.size, isSelected = viewModel.selectionSet.contains(file.id), 
-                                isSelectionMode = viewModel.selectionSet.isNotEmpty(), zoom = viewModel.zoomLevel,
+                            GridFileItem(name = name, isFolder = false, size = file.size,
+                                isSelected = viewModel.selectionSet.contains(file.id),
+                                isSelectionMode = viewModel.selectionSet.isNotEmpty(),
+                                zoom = viewModel.zoomLevel,
                                 onLongClick = { viewModel.toggleSelection(file.id) },
                                 onClick = {
                                     if (viewModel.selectionSet.isNotEmpty()) viewModel.toggleSelection(file.id)
@@ -467,10 +565,12 @@ fun DriveScreen(viewModel: DisboxViewModel) {
                         }
                     }
                 } else {
-                    LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(vertical = 8.dp)) {
+                    LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(vertical = 4.dp)) {
                         items(subDirs) { (name, fullPath) ->
-                            ListFileItem(name = name, isFolder = true, isSelected = viewModel.selectionSet.contains(fullPath), 
-                                isSelectionMode = viewModel.selectionSet.isNotEmpty(), zoom = viewModel.zoomLevel,
+                            ListFileItem(name = name, isFolder = true,
+                                isSelected = viewModel.selectionSet.contains(fullPath),
+                                isSelectionMode = viewModel.selectionSet.isNotEmpty(),
+                                zoom = viewModel.zoomLevel,
                                 onLongClick = { viewModel.toggleSelection(fullPath) },
                                 onClick = {
                                     if (viewModel.selectionSet.isNotEmpty()) viewModel.toggleSelection(fullPath)
@@ -480,8 +580,10 @@ fun DriveScreen(viewModel: DisboxViewModel) {
                         }
                         items(currentFiles.filter { !it.path.endsWith(".keep") }) { file ->
                             val name = file.path.split("/").last()
-                            ListFileItem(name = name, isFolder = false, size = file.size, isSelected = viewModel.selectionSet.contains(file.id), 
-                                isSelectionMode = viewModel.selectionSet.isNotEmpty(), zoom = viewModel.zoomLevel,
+                            ListFileItem(name = name, isFolder = false, size = file.size,
+                                isSelected = viewModel.selectionSet.contains(file.id),
+                                isSelectionMode = viewModel.selectionSet.isNotEmpty(),
+                                zoom = viewModel.zoomLevel,
                                 onLongClick = { viewModel.toggleSelection(file.id) },
                                 onClick = {
                                     if (viewModel.selectionSet.isNotEmpty()) viewModel.toggleSelection(file.id)
@@ -504,8 +606,8 @@ fun DriveScreen(viewModel: DisboxViewModel) {
             title = { Text("New Folder", fontWeight = FontWeight.Bold) },
             text = {
                 OutlinedTextField(
-                    value = folderName, 
-                    onValueChange = { folderName = it }, 
+                    value = folderName,
+                    onValueChange = { folderName = it },
                     label = { Text("Folder Name") },
                     shape = RoundedCornerShape(10.dp),
                     colors = OutlinedTextFieldDefaults.colors(
@@ -600,25 +702,63 @@ fun FilePreviewScreen(file: DisboxFile, viewModel: DisboxViewModel, onClose: () 
     val name = file.path.split("/").last()
     val context = LocalContext.current
     var previewText by remember { mutableStateOf<String?>(null) }
+    var previewImageFile by remember { mutableStateOf<File?>(null) }  // [FIX] untuk preview gambar
+    var previewPdfFile by remember { mutableStateOf<File?>(null) }    // [FIX] untuk preview PDF
     var isDownloadingPreview by remember { mutableStateOf(false) }
     var errorMsg by remember { mutableStateOf<String?>(null) }
 
     val textExts = listOf("txt", "md", "json", "js", "py", "rs", "html", "css", "xml", "yml", "yaml", "sql", "sh", "env")
+    val ext = name.split(".").last().lowercase()
 
     LaunchedEffect(file) {
-        val ext = name.split(".").last().lowercase()
-        if (textExts.contains(ext)) {
-            isDownloadingPreview = true
-            errorMsg = null
-            try {
-                val tempFile = File(context.cacheDir, "preview_$name")
-                viewModel.api?.downloadFile(file, tempFile) { }
-                previewText = tempFile.readText()
-            } catch (e: Exception) {
-                errorMsg = "Gagal memuat pratinjau: ${e.message}"
-            } finally {
-                isDownloadingPreview = false
+        isDownloadingPreview = true
+        errorMsg = null
+        try {
+            when {
+                // [FIX] Preview gambar — download ke cache lalu load dengan Coil AsyncImage
+                isImageFile(name) -> {
+                    val tempFile = File(context.cacheDir, "preview_$name")
+                    viewModel.api?.downloadFile(file, tempFile) { }
+                    previewImageFile = tempFile
+                }
+                // [FIX] Preview PDF — download ke cache, buka via Intent ACTION_VIEW
+                isPdfFile(name) -> {
+                    val tempFile = File(context.cacheDir, "preview_$name")
+                    viewModel.api?.downloadFile(file, tempFile) { }
+                    previewPdfFile = tempFile
+                }
+                // Preview teks
+                textExts.contains(ext) -> {
+                    val tempFile = File(context.cacheDir, "preview_$name")
+                    viewModel.api?.downloadFile(file, tempFile) { }
+                    previewText = tempFile.readText()
+                }
             }
+        } catch (e: Exception) {
+            errorMsg = "Gagal memuat pratinjau: ${e.message}"
+        } finally {
+            isDownloadingPreview = false
+        }
+    }
+
+    // [FIX] Auto-buka PDF dengan app eksternal setelah download selesai
+    LaunchedEffect(previewPdfFile) {
+        val pdfFile = previewPdfFile ?: return@LaunchedEffect
+        try {
+            val uri = androidx.core.content.FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.provider",
+                pdfFile
+            )
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, "application/pdf")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+            onClose()
+        } catch (e: Exception) {
+            errorMsg = "Tidak ada aplikasi PDF yang tersedia. File sudah didownload ke cache."
         }
     }
 
@@ -637,33 +777,60 @@ fun FilePreviewScreen(file: DisboxFile, viewModel: DisboxViewModel, onClose: () 
                     Text("Download")
                 }
             }
-            
-            Spacer(modifier = Modifier.height(24.dp))
-            
-            Box(modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(12.dp))
-                .background(MaterialTheme.colorScheme.background), contentAlignment = Alignment.Center) {
-                if (isDownloadingPreview) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text("Downloading preview...", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Box(
+                modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.background),
+                contentAlignment = Alignment.Center
+            ) {
+                when {
+                    isDownloadingPreview -> {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text("Downloading preview...", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                        }
                     }
-                } else if (errorMsg != null) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(20.dp)) {
-                        Icon(Icons.Default.ErrorOutline, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(48.dp))
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text(errorMsg!!, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.error)
+                    errorMsg != null -> {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(20.dp)) {
+                            Icon(Icons.Default.ErrorOutline, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(48.dp))
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text(errorMsg!!, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.error)
+                        }
                     }
-                } else if (previewText != null) {
-                    Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
-                        Text(previewText!!, fontFamily = FontFamily.Monospace, fontSize = 12.sp, color = MaterialTheme.colorScheme.onBackground)
+                    // [FIX] Preview gambar menggunakan Coil AsyncImage
+                    previewImageFile != null -> {
+                        AsyncImage(
+                            model = ImageRequest.Builder(context)
+                                .data(previewImageFile)
+                                .crossfade(true)
+                                .build(),
+                            contentDescription = name,
+                            modifier = Modifier.fillMaxSize()
+                        )
                     }
-                } else {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(getFileIcon(name), fontSize = 64.sp)
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text("No preview available for this file type", fontSize = 14.sp, 
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                    // PDF: loading spinner sementara menunggu intent terbuka
+                    isPdfFile(name) && previewPdfFile == null && !isDownloadingPreview -> {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("📄", fontSize = 64.sp)
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text("Membuka PDF...", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                        }
+                    }
+                    previewText != null -> {
+                        Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
+                            Text(previewText!!, fontFamily = FontFamily.Monospace, fontSize = 12.sp, color = MaterialTheme.colorScheme.onBackground)
+                        }
+                    }
+                    else -> {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(getFileIcon(name), fontSize = 64.sp)
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text("No preview available for this file type", fontSize = 14.sp,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                        }
                     }
                 }
             }
@@ -674,26 +841,37 @@ fun FilePreviewScreen(file: DisboxFile, viewModel: DisboxViewModel, onClose: () 
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun ListFileItem(name: String, isFolder: Boolean, size: Long = 0, isSelected: Boolean, isSelectionMode: Boolean, zoom: Float, onClick: () -> Unit, onLongClick: () -> Unit) {
-    val baseHeight = 72.dp
+    val baseHeight = 64.dp  // [UI] Sedikit lebih ramping dari 72dp
+
+    // [UI] Selected style mirip desktop: primary border + background tint
+    val bgColor = when {
+        isSelected -> MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+        else -> MaterialTheme.colorScheme.surfaceVariant
+    }
+    val borderMod = if (isSelected)
+        Modifier.border(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.6f), RoundedCornerShape(10.dp))
+    else Modifier
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .height(baseHeight * zoom)
             .padding(horizontal = 12.dp, vertical = 2.dp)
             .clip(RoundedCornerShape(10.dp))
+            .then(borderMod)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-            .background(if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant)
+            .background(bgColor)
             .padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Desktop-like checkbox for list
+        // [UI] Checkbox style mirip desktop
         if (isSelectionMode) {
             Box(
                 modifier = Modifier
                     .size(18.dp * zoom)
                     .clip(RoundedCornerShape(4.dp))
                     .border(
-                        1.5.dp, 
+                        1.5.dp,
                         if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
                         RoundedCornerShape(4.dp)
                     )
@@ -704,28 +882,30 @@ fun ListFileItem(name: String, isFolder: Boolean, size: Long = 0, isSelected: Bo
                     Icon(Icons.Default.Check, null, tint = Color.White, modifier = Modifier.size(12.dp * zoom))
                 }
             }
-            Spacer(modifier = Modifier.width(16.dp))
+            Spacer(modifier = Modifier.width(12.dp))
         }
 
         Box(
-            modifier = Modifier.size(40.dp * zoom).clip(CircleShape)
-                .background(if (isFolder) Color(0xFFF0A500).copy(alpha = 0.1f) else MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)),
+            modifier = Modifier.size(36.dp * zoom).clip(RoundedCornerShape(8.dp))
+                .background(if (isFolder) Color(0xFFF0A500).copy(alpha = 0.12f) else MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)),
             contentAlignment = Alignment.Center
         ) {
             if (isFolder) {
-                Icon(Icons.Default.Folder, contentDescription = null, tint = Color(0xFFF0A500), modifier = Modifier.size(24.dp * zoom))
+                Icon(Icons.Default.Folder, contentDescription = null, tint = Color(0xFFF0A500), modifier = Modifier.size(22.dp * zoom))
             } else {
-                Text(getFileIcon(name), fontSize = 24.sp * zoom)
+                Text(getFileIcon(name), fontSize = 20.sp * zoom)
             }
         }
-        Spacer(modifier = Modifier.width(16.dp))
+        Spacer(modifier = Modifier.width(14.dp))
         Column(modifier = Modifier.weight(1f)) {
-            Text(name, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp * zoom)
-            if (!isFolder) {
-                Text("${size / 1024} KB", fontSize = 12.sp * zoom, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
-            } else {
-                Text("Folder", fontSize = 12.sp * zoom, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
-            }
+            Text(name, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                fontSize = 14.sp * zoom)
+            Text(
+                if (isFolder) "Folder" else "${size / 1024} KB",
+                fontSize = 11.sp * zoom,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+            )
         }
     }
 }
@@ -733,15 +913,25 @@ fun ListFileItem(name: String, isFolder: Boolean, size: Long = 0, isSelected: Bo
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun GridFileItem(name: String, isFolder: Boolean, size: Long = 0, isSelected: Boolean, isSelectionMode: Boolean, zoom: Float, onClick: () -> Unit, onLongClick: () -> Unit) {
+    // [UI] Selected style mirip desktop: primary border + background tint
+    val bgColor = when {
+        isSelected -> MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+        else -> MaterialTheme.colorScheme.surfaceVariant
+    }
+    val borderMod = if (isSelected)
+        Modifier.border(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.6f), RoundedCornerShape(12.dp))
+    else Modifier
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
+            .then(borderMod)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-            .background(if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant)
+            .background(bgColor)
             .padding(12.dp)
     ) {
-        // Desktop-like checkbox for grid (top-right)
+        // [UI] Checkbox di pojok kanan atas — style mirip desktop
         if (isSelectionMode) {
             Box(
                 modifier = Modifier
@@ -749,7 +939,7 @@ fun GridFileItem(name: String, isFolder: Boolean, size: Long = 0, isSelected: Bo
                     .size(18.dp * zoom)
                     .clip(RoundedCornerShape(4.dp))
                     .border(
-                        1.5.dp, 
+                        1.5.dp,
                         if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
                         RoundedCornerShape(4.dp)
                     )
@@ -768,35 +958,36 @@ fun GridFileItem(name: String, isFolder: Boolean, size: Long = 0, isSelected: Bo
             modifier = Modifier.fillMaxWidth()
         ) {
             Box(
-                modifier = Modifier.size(48.dp * zoom).clip(CircleShape)
-                    .background(if (isFolder) Color(0xFFF0A500).copy(alpha = 0.1f) else MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)),
+                modifier = Modifier.size(44.dp * zoom).clip(RoundedCornerShape(10.dp))
+                    .background(if (isFolder) Color(0xFFF0A500).copy(alpha = 0.12f) else MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)),
                 contentAlignment = Alignment.Center
             ) {
                 if (isFolder) {
-                    Icon(Icons.Default.Folder, contentDescription = null, tint = Color(0xFFF0A500), modifier = Modifier.size(28.dp * zoom))
+                    Icon(Icons.Default.Folder, contentDescription = null, tint = Color(0xFFF0A500), modifier = Modifier.size(26.dp * zoom))
                 } else {
-                    Text(getFileIcon(name), fontSize = 28.sp * zoom)
+                    Text(getFileIcon(name), fontSize = 26.sp * zoom)
                 }
             }
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(6.dp))
             Text(
-                name, 
-                fontWeight = FontWeight.Medium, 
-                maxLines = 1, 
-                overflow = TextOverflow.Ellipsis, 
-                color = MaterialTheme.colorScheme.onSurface, 
+                name,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                 fontSize = 11.sp * zoom,
                 textAlign = TextAlign.Center
             )
             Text(
-                if (isFolder) "Folder" else "${size / 1024} KB", 
-                fontSize = 9.sp * zoom, 
+                if (isFolder) "Folder" else "${size / 1024} KB",
+                fontSize = 9.sp * zoom,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
             )
         }
     }
 }
 
+// [FIX] TransferPanel — tampilkan "Done ✓" saat progress = 1f, baru hilang setelah selesai
 @Composable
 fun TransferPanel(progressMap: Map<String, Float>) {
     Card(
@@ -811,12 +1002,47 @@ fun TransferPanel(progressMap: Map<String, Float>) {
             LazyColumn {
                 progressMap.forEach { (name, p) ->
                     item {
+                        val isDone = p >= 1f
                         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 4.dp)) {
-                            Text(name, modifier = Modifier.weight(1f), fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurface)
+                            Text(
+                                name,
+                                modifier = Modifier.weight(1f),
+                                fontSize = 12.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
                             Spacer(modifier = Modifier.width(8.dp))
-                            LinearProgressIndicator(progress = { p }, modifier = Modifier.width(80.dp).height(4.dp).clip(CircleShape))
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("${(p * 100).toInt()}%", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                            if (isDone) {
+                                // [FIX] Tampilkan "Done ✓" dengan warna hijau saat selesai
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        Icons.Default.CheckCircle,
+                                        null,
+                                        tint = Color(0xFF00D4AA),
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        "Done",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF00D4AA)
+                                    )
+                                }
+                            } else {
+                                LinearProgressIndicator(
+                                    progress = { p },
+                                    modifier = Modifier.width(80.dp).height(4.dp).clip(CircleShape)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    "${(p * 100).toInt()}%",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
                         }
                     }
                 }
@@ -838,12 +1064,12 @@ fun SettingsScreen(viewModel: DisboxViewModel) {
     Column(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(24.dp).verticalScroll(rememberScrollState())) {
         Text("Settings", fontSize = 28.sp, fontWeight = FontWeight.ExtraBold, fontFamily = FontFamily.SansSerif, color = MaterialTheme.colorScheme.onBackground)
         Spacer(modifier = Modifier.height(32.dp))
-        
+
         Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
             Column(modifier = Modifier.padding(20.dp)) {
                 Text("Appearance", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                Row(modifier = Modifier.fillMaxWidth().padding(top = 12.dp), 
+                Row(modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
                     horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Column {
                         Text("Dark Mode", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
@@ -853,7 +1079,7 @@ fun SettingsScreen(viewModel: DisboxViewModel) {
                 }
             }
         }
-        
+
         Spacer(modifier = Modifier.height(16.dp))
 
         Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp),
@@ -863,7 +1089,7 @@ fun SettingsScreen(viewModel: DisboxViewModel) {
                 Spacer(modifier = Modifier.height(16.dp))
                 Text("Chunk Size", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
                 Text("Current: ${CHUNK_OPTIONS[currentIndex].first}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
-                
+
                 Slider(
                     value = currentIndex.toFloat(),
                     onValueChange = { viewModel.setChunk(CHUNK_OPTIONS[it.toInt()].second) },
@@ -871,7 +1097,7 @@ fun SettingsScreen(viewModel: DisboxViewModel) {
                     steps = 1,
                     modifier = Modifier.padding(vertical = 8.dp)
                 )
-                
+
                 Box(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp))
                     .background(MaterialTheme.colorScheme.surface).padding(12.dp)) {
                     Text(CHUNK_OPTIONS[currentIndex].third, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface)
@@ -880,7 +1106,7 @@ fun SettingsScreen(viewModel: DisboxViewModel) {
         }
 
         Spacer(modifier = Modifier.height(16.dp))
-        
+
         Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
             Column(modifier = Modifier.padding(20.dp)) {
@@ -889,7 +1115,7 @@ fun SettingsScreen(viewModel: DisboxViewModel) {
                 Text("Webhook: ${viewModel.webhookUrl.take(20)}...", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
                 Spacer(modifier = Modifier.height(16.dp))
                 Button(
-                    onClick = { showDisconnectConfirm = true }, 
+                    onClick = { showDisconnectConfirm = true },
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(10.dp)
@@ -913,9 +1139,9 @@ fun SettingsScreen(viewModel: DisboxViewModel) {
                 Text("LinkedIn: linkedin.com/in/naufal-gastiadirrijal-fawwaz-alamsyah-a34b43363", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
             }
         }
-        
+
         Spacer(modifier = Modifier.height(24.dp))
-        Text("Disbox Mobile v2.0.0", modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f))
+        Text("Disbox Mobile v3.0.0", modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f))
     }
 
     if (showDisconnectConfirm) {
