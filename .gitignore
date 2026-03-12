@@ -49,3 +49,4 @@ google-services.json
 *.hprof
 /.gradle
 /app/build
+/release
