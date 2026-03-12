@@ -32,6 +32,11 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
     var chunkSize = 8 * 1024 * 1024 // 8MB
     var onStatusChange: ((String) -> Unit)? = null
     
+    // [REFACTOR] SQLite Database Instance
+    private val db: DisboxDatabase by lazy { DisboxDatabase.getDatabase(context) }
+    private val fileDao by lazy { db.fileDao() }
+    private val metaDao by lazy { db.metadataSyncDao() }
+
     private val metadataDir: File by lazy {
         val dir = File(Environment.getExternalStorageDirectory(), "disbox")
         if (!dir.exists()) dir.mkdirs()
@@ -40,6 +45,7 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
 
     suspend fun init(forceSyncId: String? = null): String = withContext(Dispatchers.IO) {
         hashedWebhook = hashWebhook(webhookUrl)
+        migrateJsonToSqlite() // [REFACTOR] Run migration
         syncMetadata(forceSyncId)
         hashedWebhook!!
     }
@@ -49,16 +55,40 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
         return bytes.joinToString("") { "%02x".format(it) }
     }
 
-    private suspend fun getMsgIdFromDiscovery(): String? = withContext(Dispatchers.IO) {
+    // [REFACTOR] Auto-migrate JSON to SQLite
+    private suspend fun migrateJsonToSqlite() = withContext(Dispatchers.IO) {
         val localFile = File(metadataDir, "$hashedWebhook.json")
-        var localMsgId: String? = null
         if (localFile.exists()) {
             try {
                 val type = object : TypeToken<Map<String, Any>>() {}.type
                 val map: Map<String, Any> = gson.fromJson(localFile.readText(), type)
-                if (map["isDirty"] == true) return@withContext "pending"
-                localMsgId = map["lastMsgId"] as? String
+                
+                @Suppress("UNCHECKED_CAST")
+                val files = gson.fromJson<List<DisboxFile>>(gson.toJson(map["files"]), object : TypeToken<List<DisboxFile>>() {}.type)
+                
+                saveMetadataToLocal(
+                    files, 
+                    map["lastMsgId"] as? String, 
+                    map["isDirty"] == true,
+                    (map["snapshotHistory"] as? List<String>) ?: emptyList()
+                )
+                
+                // Rename to .bak
+                localFile.renameTo(File(metadataDir, "$hashedWebhook.json.bak"))
+                println("[migration] Migrated $hashedWebhook.json to SQLite")
             } catch (e: Exception) { e.printStackTrace() }
+        }
+    }
+
+    private suspend fun getMsgIdFromDiscovery(): Any? = withContext(Dispatchers.IO) { // [REFACTOR] returns map or "pending"
+        val meta = metaDao.getMetadata(hashedWebhook!!)
+        
+        var localMsgId: String? = null
+        var snapshotHistory = emptyList<String>()
+        if (meta != null) {
+            if (meta.isDirty == 1) return@withContext "pending"
+            localMsgId = meta.lastMsgId
+            snapshotHistory = gson.fromJson(meta.snapshotHistory, object : TypeToken<List<String>>() {}.type)
         }
 
         var webhookMsgId: String? = null
@@ -76,9 +106,10 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
             }
         } catch (e: Exception) { e.printStackTrace() }
 
-        val candidates = listOfNotNull(localMsgId, webhookMsgId)
-        if (candidates.isEmpty()) return@withContext null
-        candidates.maxByOrNull { it.toLongOrNull() ?: 0L }
+        val best = listOfNotNull(localMsgId, webhookMsgId).maxByOrNull { it.toLongOrNull() ?: 0L }
+        if (best == null) return@withContext null
+        
+        mapOf("best" to best, "history" to snapshotHistory)
     }
 
     private suspend fun downloadMetadataFromMsg(msgId: String): List<DisboxFile> = withContext(Dispatchers.IO) {
@@ -104,14 +135,42 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
 
     suspend fun syncMetadata(forceId: String? = null): Boolean = withContext(Dispatchers.IO) {
         try {
-            val msgId = forceId ?: getMsgIdFromDiscovery() ?: return@withContext false
-            if (msgId == "pending") return@withContext true
+            val discovery = if (forceId != null) mapOf("best" to forceId, "history" to emptyList<String>()) else getMsgIdFromDiscovery()
+            if (discovery == null) return@withContext false
+            if (discovery == "pending") return@withContext true
 
-            val files = downloadMetadataFromMsg(msgId)
-            saveMetadataToLocal(files, msgId)
-            lastSyncedId = msgId
-            onStatusChange?.invoke("synced")
-            true
+            @Suppress("UNCHECKED_CAST")
+            val discMap = discovery as Map<String, Any>
+            val msgId = discMap["best"] as String
+            val history = discMap["history"] as List<String>
+
+            // Cek if local exists
+            val localFiles = getFileSystem()
+            if (forceId == null && msgId == lastSyncedId && localFiles.isNotEmpty()) {
+                return@withContext true
+            }
+
+            var files: List<DisboxFile>? = null
+            try {
+                files = downloadMetadataFromMsg(msgId)
+            } catch (e: Exception) {
+                // [REFACTOR] Fallback using snapshotHistory
+                val fallbacks = history.reversed().filter { it != msgId }
+                for (fid in fallbacks) {
+                    try {
+                        files = downloadMetadataFromMsg(fid)
+                        lastSyncedId = fid
+                        break
+                    } catch (err: Exception) { err.printStackTrace() }
+                }
+            }
+
+            if (files != null) {
+                saveMetadataToLocal(files, lastSyncedId ?: msgId)
+                lastSyncedId = lastSyncedId ?: msgId
+                onStatusChange?.invoke("synced")
+                true
+            } else false
         } catch (e: Exception) {
             e.printStackTrace()
             onStatusChange?.invoke("error")
@@ -119,33 +178,64 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
         }
     }
 
-    private suspend fun saveMetadataToLocal(files: List<DisboxFile>, msgId: String? = null, isDirty: Boolean = false) = withContext(Dispatchers.IO) {
-        val file = File(metadataDir, "$hashedWebhook.json")
-        val map = mapOf(
-            "lastMsgId" to (msgId ?: lastSyncedId),
-            "files" to files,
-            "isDirty" to isDirty,
-            "updatedAt" to System.currentTimeMillis()
-        )
-        file.writeText(gson.toJson(map))
+    // [REFACTOR] Save to SQLite instead of JSON
+    private suspend fun saveMetadataToLocal(
+        files: List<DisboxFile>, 
+        msgId: String? = null, 
+        isDirty: Boolean = false,
+        explicitHistory: List<String>? = null
+    ) = withContext(Dispatchers.IO) {
+        db.withTransaction {
+            if (msgId != null || explicitHistory != null) {
+                // Replace all files if syncing or migrating
+                fileDao.deleteAll()
+                fileDao.insertAll(files.map { f ->
+                    val parts = f.path.split("/")
+                    val name = parts.last()
+                    val parent = parts.dropLast(1).joinToString("/").ifEmpty { "/" }
+                    FileEntity(f.id, f.path, parent, name, f.size, f.createdAt, gson.toJson(f.messageIds))
+                })
+            } else if (isDirty) {
+                // Local update: sync array to DB (delete all + insert is fastest for small-med sets)
+                fileDao.deleteAll()
+                fileDao.insertAll(files.map { f ->
+                    val parts = f.path.split("/")
+                    val name = parts.last()
+                    val parent = parts.dropLast(1).joinToString("/").ifEmpty { "/" }
+                    FileEntity(f.id, f.path, parent, name, f.size, f.createdAt, gson.toJson(f.messageIds))
+                })
+            }
+
+            val currentMeta = metaDao.getMetadata(hashedWebhook!!)
+            var history = if (explicitHistory != null) explicitHistory.toMutableList() 
+                           else gson.fromJson<MutableList<String>>(currentMeta?.snapshotHistory ?: "[]", object : TypeToken<MutableList<String>>() {}.type)
+            
+            if (msgId != null && !history.contains(msgId)) {
+                history.add(msgId)
+                if (history.size > 3) history.removeAt(0)
+            }
+
+            metaDao.insertOrReplace(MetadataSyncEntity(
+                hashedWebhook!!,
+                msgId ?: currentMeta?.lastMsgId,
+                gson.toJson(history),
+                if (isDirty) 1 else 0,
+                System.currentTimeMillis()
+            ))
+        }
         if (isDirty) onStatusChange?.invoke("dirty")
     }
 
+    // [REFACTOR] Get from SQLite
     suspend fun getFileSystem(): List<DisboxFile> = withContext(Dispatchers.IO) {
-        val file = File(metadataDir, "$hashedWebhook.json")
-        if (!file.exists()) return@withContext emptyList()
-        try {
-            val type = object : TypeToken<Map<String, Any>>() {}.type
-            val map: Map<String, Any> = gson.fromJson(file.readText(), type)
-            val filesListJson = gson.toJson(map["files"])
-            gson.fromJson(filesListJson, object : TypeToken<List<DisboxFile>>() {}.type)
-        } catch (e: Exception) {
-            emptyList()
+        fileDao.getAllFiles().map { 
+            DisboxFile(it.id, it.path, gson.fromJson(it.messageIds, object : TypeToken<List<String>>() {}.type), it.size, it.createdAt)
         }
     }
 
     suspend fun uploadMetadataToDiscord(explicitFiles: List<DisboxFile>? = null) = withContext(Dispatchers.IO) {
         val files = explicitFiles ?: getFileSystem()
+        if (files.isEmpty()) return@withContext
         val json = gson.toJson(files)
         
         onStatusChange?.invoke("uploading")
