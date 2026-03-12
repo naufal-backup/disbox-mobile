@@ -249,6 +249,10 @@ fun DriveScreen(viewModel: DisboxViewModel) {
     var folderName by remember { mutableStateOf("") }
     var previewFile by remember { mutableStateOf<DisboxFile?>(null) }
     var showDeleteConfirm by remember { mutableStateOf<List<String>?>(null) }
+    
+    var showRenameDialog by remember { mutableStateOf(false) }
+    var newName by remember { mutableStateOf("") }
+    var itemToRename by remember { mutableStateOf<Pair<String, String?>?>(null) } // Path, Id
 
     val currentFiles = viewModel.allFiles.filter { f ->
         val parts = f.path.split("/").filter { it.isNotEmpty() }
@@ -290,16 +294,33 @@ fun DriveScreen(viewModel: DisboxViewModel) {
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             Column {
+                // Address Bar
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.surface)
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.FolderOpen, null, modifier = Modifier.size(12.dp), tint = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            viewModel.currentPath, 
+                            fontSize = 11.sp, 
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
                 TopAppBar(
                     colors = TopAppBarDefaults.topAppBarColors(
                         containerColor = MaterialTheme.colorScheme.surface,
                         titleContentColor = MaterialTheme.colorScheme.onBackground,
                     ),
                     title = { 
-                        Column {
-                            Text("My Drive", fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                            Text(viewModel.currentPath, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
-                        }
+                        Text("My Drive", fontSize = 18.sp, fontWeight = FontWeight.Bold)
                     },
                     actions = {
                         MetadataStatusIndicator(status = viewModel.metadataStatus)
@@ -309,6 +330,34 @@ fun DriveScreen(viewModel: DisboxViewModel) {
                         }
 
                         if (viewModel.selectionSet.isNotEmpty()) {
+                            if (viewModel.selectionSet.size == 1) {
+                                IconButton(onClick = {
+                                    val idOrPath = viewModel.selectionSet.first()
+                                    val file = viewModel.allFiles.find { it.id == idOrPath || it.path == idOrPath }
+                                    if (file != null) {
+                                        val name = file.path.split("/").last()
+                                        newName = name
+                                        itemToRename = file.path to file.id
+                                        showRenameDialog = true
+                                    } else {
+                                        // Folder
+                                        newName = idOrPath.split("/").last()
+                                        itemToRename = idOrPath to null
+                                        showRenameDialog = true
+                                    }
+                                }) {
+                                    Icon(Icons.Default.Edit, contentDescription = null)
+                                }
+                            }
+                            
+                            IconButton(onClick = { viewModel.startMove(viewModel.selectionSet) }) {
+                                Icon(Icons.Default.DriveFileMove, contentDescription = null)
+                            }
+                            
+                            IconButton(onClick = { viewModel.startCopy(viewModel.selectionSet) }) {
+                                Icon(Icons.Default.ContentCopy, contentDescription = null)
+                            }
+
                             IconButton(onClick = { showDeleteConfirm = viewModel.selectionSet.toList() }) {
                                 Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error)
                             }
@@ -327,15 +376,32 @@ fun DriveScreen(viewModel: DisboxViewModel) {
         },
         floatingActionButton = {
             Column(horizontalAlignment = Alignment.End) {
-                SmallFloatingActionButton(
-                    onClick = { showCreateFolderDialog = true },
-                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                    modifier = Modifier.padding(bottom = 8.dp)
-                ) {
-                    Icon(Icons.Default.CreateNewFolder, contentDescription = null)
-                }
-                FloatingActionButton(onClick = { filePicker.launch("*/*") }, containerColor = MaterialTheme.colorScheme.primary) {
-                    Icon(Icons.Default.Add, contentDescription = null, tint = Color.White)
+                if (viewModel.moveCopyMode != null) {
+                    ExtendedFloatingActionButton(
+                        onClick = { viewModel.paste(viewModel.currentPath) },
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(bottom = 8.dp),
+                        icon = { Icon(Icons.Default.ContentPaste, null) },
+                        text = { Text("Paste here") }
+                    )
+                    SmallFloatingActionButton(
+                        onClick = { viewModel.cancelMoveCopy() },
+                        containerColor = MaterialTheme.colorScheme.errorContainer,
+                        modifier = Modifier.padding(bottom = 16.dp)
+                    ) {
+                        Icon(Icons.Default.Close, null)
+                    }
+                } else {
+                    SmallFloatingActionButton(
+                        onClick = { showCreateFolderDialog = true },
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    ) {
+                        Icon(Icons.Default.CreateNewFolder, contentDescription = null)
+                    }
+                    FloatingActionButton(onClick = { filePicker.launch("*/*") }, containerColor = MaterialTheme.colorScheme.primary) {
+                        Icon(Icons.Default.Add, contentDescription = null, tint = Color.White)
+                    }
                 }
             }
         }
@@ -463,6 +529,41 @@ fun DriveScreen(viewModel: DisboxViewModel) {
             },
             dismissButton = {
                 TextButton(onClick = { showCreateFolderDialog = false }) { Text("Cancel") }
+            }
+        )
+    }
+
+    if (showRenameDialog && itemToRename != null) {
+        AlertDialog(
+            onDismissRequest = { showRenameDialog = false },
+            containerColor = MaterialTheme.colorScheme.surface,
+            title = { Text("Rename Item", fontWeight = FontWeight.Bold) },
+            text = {
+                OutlinedTextField(
+                    value = newName,
+                    onValueChange = { newName = it },
+                    label = { Text("New Name") },
+                    shape = RoundedCornerShape(10.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                        focusedLabelColor = MaterialTheme.colorScheme.primary,
+                        unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                        unfocusedTextColor = MaterialTheme.colorScheme.onSurface
+                    )
+                )
+            },
+            confirmButton = {
+                Button(onClick = {
+                    if (newName.isNotBlank()) {
+                        viewModel.renamePath(itemToRename!!.first, newName, itemToRename!!.second)
+                        showRenameDialog = false
+                    }
+                }) { Text("Rename") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRenameDialog = false }) { Text("Cancel") }
             }
         )
     }

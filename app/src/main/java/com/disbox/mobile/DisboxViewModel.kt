@@ -33,6 +33,9 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
     var viewMode by mutableStateOf(prefs.getString("view_mode", "grid") ?: "grid")
     var zoomLevel by mutableStateOf(prefs.getFloat("zoom_level", 1f))
 
+    var moveCopyMode by mutableStateOf<String?>(null) // "move" or "copy"
+    var moveCopyItems by mutableStateOf<Set<String>>(emptySet())
+
     private val notificationHelper = NotificationHelper(application)
     private var pollJob: Job? = null
 
@@ -133,9 +136,8 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
 
     fun deletePaths(pathsOrIds: List<String>) {
         // Optimistic UI: Filter out items immediately
-        val pathsToDelete = allFiles.filter { pathsOrIds.contains(it.id) || pathsOrIds.contains(it.path) }.map { it.path }
         allFiles = allFiles.filterNot { f ->
-            pathsOrIds.contains(f.id) || pathsOrIds.contains(f.path) || pathsToDelete.any { p -> f.path.startsWith("$p/") }
+            pathsOrIds.contains(f.id) || pathsOrIds.contains(f.path) || pathsOrIds.any { p -> f.path.startsWith("$p/") }
         }
         selectionSet = emptySet()
 
@@ -227,5 +229,59 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
 
     fun clearSelection() {
         selectionSet = emptySet()
+    }
+
+    fun startMove(items: Set<String>) {
+        moveCopyMode = "move"
+        moveCopyItems = items
+        selectionSet = emptySet()
+    }
+
+    fun startCopy(items: Set<String>) {
+        moveCopyMode = "copy"
+        moveCopyItems = items
+        selectionSet = emptySet()
+    }
+
+    fun cancelMoveCopy() {
+        moveCopyMode = null
+        moveCopyItems = emptySet()
+    }
+
+    fun paste(destDir: String) {
+        val mode = moveCopyMode ?: return
+        val items = moveCopyItems
+        val targetPath = if (destDir == "/") "" else destDir.trimStart('/')
+        
+        viewModelScope.launch {
+            isLoading = true
+            try {
+                items.forEach { idOrPath ->
+                    val file = allFiles.find { it.id == idOrPath || it.path == idOrPath }
+                    if (mode == "move") {
+                        if (file != null) {
+                            api?.movePath(file.path, targetPath, file.id)
+                        } else {
+                            // Folder
+                            api?.movePath(idOrPath, targetPath, null)
+                        }
+                    } else {
+                        if (file != null) {
+                            api?.copyPath(file.path, targetPath, file.id)
+                        } else {
+                            // Folder
+                            api?.copyPath(idOrPath, targetPath, null)
+                        }
+                    }
+                }
+                allFiles = api?.getFileSystem() ?: emptyList()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            } finally {
+                moveCopyMode = null
+                moveCopyItems = emptySet()
+                isLoading = false
+            }
+        }
     }
 }
