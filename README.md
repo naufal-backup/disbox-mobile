@@ -13,12 +13,16 @@ Disbox Mobile adalah pendamping seluler untuk ekosistem Disbox, memungkinkan And
 
 ## 🚀 Fitur Utama
 
-*   **Sinkronisasi Metadata v3:** [BARU] Mendukung struktur `MetadataContainer` terbaru yang identik dengan Desktop, memungkinkan sinkronisasi PIN dan status file secara real-time.
-*   **Master PIN Cloud Sync:** [BARU] Atur Master PIN satu kali, dan gunakan di semua perangkat Anda. Hash PIN kini disimpan secara aman di dalam metadata terenkripsi di Discord.
+*   **Multi-Bahasa (Localization):** [BARU] Mendukung bahasa **Indonesia, English,** dan **Chinese (ZH)**. Bahasa dapat diubah langsung melalui menu pengaturan.
+*   **Pengurutan File (Sorting):** [BARU] Urutkan file dan folder berdasarkan **Nama, Tanggal,** atau **Ukuran**. Folder selalu diprioritaskan di atas file.
+*   **Validasi Duplikat Lokal:** [BARU] Pengecekan nama file/folder yang sama dilakukan secara instan di database lokal sebelum operasi network, menghemat kuota API Discord dan mencegah konflik data.
+*   **Sinkronisasi Metadata v3:** Mendukung struktur `MetadataContainer` terbaru yang identik dengan Desktop, memungkinkan sinkronisasi PIN dan status file secara real-time.
+*   **Optimasi Database:** [BARU] Menggunakan mode **Write-Ahead Logging (WAL)** pada database Room untuk performa tulis yang lebih cepat dan UI yang lebih responsif.
+*   **Master PIN Cloud Sync:** Atur Master PIN satu kali, dan gunakan di semua perangkat Anda. Hash PIN kini disimpan secara aman di dalam metadata terenkripsi di Discord.
 *   **Area Terkunci (Locked Area):** Tab khusus untuk menyimpan file/folder sensitif. Memerlukan verifikasi PIN untuk akses, pengunduhan, atau pemindahan.
 *   **Sistem Favorit (Starred):** Tandai file atau folder penting sebagai favorit. Sinkron dengan Desktop menggunakan logika berbasis file `.keep`.
 *   **Aksi Massal (Bulk Actions):** Pilih banyak file sekaligus untuk melakukan **Move, Copy, Delete, Star,** atau **Lock** secara bersamaan melalui bilah menu atas.
-*   **Unlock & Move:** [BARU] Fitur khusus untuk membuka kunci item dan langsung memindahkannya ke folder tujuan (termasuk root) dalam satu langkah.
+*   **Unlock & Move:** Fitur khusus untuk membuka kunci item dan langsung memindahkannya ke folder tujuan (termasuk root) dalam satu langkah.
 *   **Virtual File System:** Struktur folder yang tertata rapi di database **Room (SQLite)** yang cepat dan efisien.
 *   **Rolling Snapshot:** Sistem cadangan otomatis untuk 3 snapshot metadata terbaru guna mencegah kehilangan data.
 *   **Mode Tampilan Fleksibel:** Pilih antara mode **Grid** atau **List** dengan slider zoom real-time untuk mengatur ukuran item.
