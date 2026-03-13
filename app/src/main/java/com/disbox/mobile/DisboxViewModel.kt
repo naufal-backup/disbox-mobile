@@ -30,6 +30,20 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
     var selectionSet by mutableStateOf<Set<String>>(emptySet())
 
     var theme by mutableStateOf(prefs.getString("theme", "dark") ?: "dark")
+    var language by mutableStateOf(prefs.getString("language", "id") ?: "id")
+    var sortMode by mutableStateOf(prefs.getString("sort_mode", "name") ?: "name")
+    
+    fun updateLanguage(lang: String) {
+        language = lang
+        prefs.edit().putString("language", lang).apply()
+    }
+
+    fun updateSortMode(mode: String) {
+        sortMode = mode
+        prefs.edit().putString("sort_mode", mode).apply()
+    }
+
+    var latestVersion by mutableStateOf("v3.0")
     var chunkSize by mutableStateOf(prefs.getInt("chunk_size", 10 * 1024 * 1024))
     var metadataStatus by mutableStateOf("synced")
 
@@ -45,9 +59,37 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
     private var pollJob: Job? = null
 
     init {
+        fetchLatestVersion()
         if (webhookUrl.isNotEmpty()) {
             connect(webhookUrl)
         }
+    }
+
+    private fun fetchLatestVersion() {
+        viewModelScope.launch {
+            try {
+                val client = okhttp3.OkHttpClient()
+                val request = okhttp3.Request.Builder()
+                    .url("https://api.github.com/repos/naufal-backup/disbox/releases/latest")
+                    .build()
+                val response = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    client.newCall(request).execute()
+                }
+                if (response.isSuccessful) {
+                    val body = response.body?.string()
+                    if (body != null) {
+                        val json = com.google.gson.Gson().fromJson(body, com.google.gson.JsonObject::class.java)
+                        latestVersion = json.get("tag_name").asString
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    fun t(key: String, params: Map<String, String>? = null): String {
+        return I18n.t(language, key, params)
     }
 
     fun setPage(page: String) {

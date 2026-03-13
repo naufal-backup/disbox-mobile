@@ -362,10 +362,28 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
         uploadMetadataToDiscord(files)
     }
 
-    suspend fun createFolder(folderName: String, currentPath: String) {
+    suspend fun checkDuplicate(name: String, parentPath: String): Boolean = withContext(Dispatchers.IO) {
+        val currentHash = hashedWebhook ?: return@withContext false
+        val normalizedParent = if (parentPath == "/") "/" else parentPath.trim('/')
+        
+        val fullPath = if (normalizedParent == "/" || normalizedParent.isEmpty()) name else "$normalizedParent/$name"
+        
+        val existingFile = fileDao.getFileByPath(fullPath, currentHash)
+        if (existingFile != null) return@withContext true
+        
+        val keepPath = "$fullPath/.keep"
+        val existingFolder = fileDao.getFileByPath(keepPath, currentHash)
+        if (existingFolder != null) return@withContext true
+        
+        return@withContext false
+    }
+
+    suspend fun createFolder(folderName: String, currentPath: String): Boolean {
+        if (checkDuplicate(folderName, currentPath)) return false
         val dirPath = if (currentPath == "/") "" else currentPath.trimStart('/')
         val folderPath = if (dirPath.isEmpty()) "$folderName/.keep" else "$dirPath/$folderName/.keep"
         createFile(folderPath, emptyList(), 0)
+        return true
     }
 
     suspend fun deletePath(targetPath: String, id: String? = null) {
@@ -385,7 +403,13 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
         uploadMetadataToDiscord(filtered)
     }
 
-    suspend fun renamePath(oldPath: String, newPath: String, id: String? = null) {
+    suspend fun renamePath(oldPath: String, newPath: String, id: String? = null): Boolean {
+        val parts = newPath.split("/")
+        val name = parts.last()
+        val parentPath = parts.dropLast(1).joinToString("/").ifEmpty { "/" }
+        
+        if (checkDuplicate(name, parentPath)) return false
+
         var found = false
         val files = getFileSystem().map {
             when {
@@ -402,6 +426,7 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
             saveMetadataToLocal(files, isDirty = true)
             uploadMetadataToDiscord(files)
         }
+        return found
     }
 
     suspend fun movePath(sourcePath: String, destDir: String, id: String? = null) {

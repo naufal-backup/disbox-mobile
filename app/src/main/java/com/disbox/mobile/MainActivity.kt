@@ -159,12 +159,12 @@ fun FileThumbnail(file: DisboxFile, viewModel: DisboxViewModel, modifier: Modifi
 }
 
 @Composable
-fun MetadataStatusIndicator(status: String) {
+fun MetadataStatusIndicator(status: String, viewModel: DisboxViewModel) {
     val (color, label, icon) = when (status) {
-        "synced" -> Triple(Color(0xFF00D4AA), "Synced", Icons.Default.CheckCircle)
-        "uploading" -> Triple(Color(0xFF5865F2), "Uploading...", Icons.Default.Refresh)
-        "dirty" -> Triple(Color(0xFFF0A500), "Pending", Icons.Default.History)
-        "error" -> Triple(Color(0xFFED4245), "Sync Error", Icons.Default.Error)
+        "synced" -> Triple(Color(0xFF00D4AA), viewModel.t("synced"), Icons.Default.CheckCircle)
+        "uploading" -> Triple(Color(0xFF5865F2), viewModel.t("syncing_items", mapOf("count" to "")).trim(), Icons.Default.Refresh)
+        "dirty" -> Triple(Color(0xFFF0A500), viewModel.t("waiting_sync"), Icons.Default.History)
+        "error" -> Triple(Color(0xFFED4245), viewModel.t("sync_error"), Icons.Default.Error)
         else -> Triple(Color.Gray, "", Icons.Default.Info)
     }
     if (label.isEmpty()) return
@@ -219,7 +219,7 @@ fun BreadcrumbBar(currentPath: String, onNavigate: (String) -> Unit) {
 @Composable
 fun DisboxApp(viewModel: DisboxViewModel, onFinish: () -> Unit) {
     val allTabIds = listOf("drive", "recent", "starred", "locked", "settings")
-    val allTabs = listOf("Drive", "Recent", "Starred", "Locked", "Settings")
+    val allTabs = listOf(viewModel.t("drive"), viewModel.t("recent"), viewModel.t("starred"), viewModel.t("locked"), viewModel.t("settings"))
     val allIcons = listOf(Icons.Default.Storage, Icons.Default.History, Icons.Default.Star, Icons.Default.Lock, Icons.Default.Settings)
     
     val filteredIndices = allTabIds.indices.filter { i -> allTabIds[i] != "recent" || viewModel.showRecent }
@@ -244,7 +244,7 @@ fun DisboxApp(viewModel: DisboxViewModel, onFinish: () -> Unit) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.height(16.dp))
-                    Text("Connecting...", fontSize = 14.sp, color = MaterialTheme.colorScheme.onBackground)
+                    Text(viewModel.t("connecting"), fontSize = 14.sp, color = MaterialTheme.colorScheme.onBackground)
                 }
             }
         } else {
@@ -272,7 +272,7 @@ fun DisboxApp(viewModel: DisboxViewModel, onFinish: () -> Unit) {
                         "settings" -> SettingsScreen(viewModel)
                         else -> PlaceholderScreen(viewModel.activePage)
                     }
-                    if (viewModel.progressMap.isNotEmpty()) TransferPanel(viewModel.progressMap)
+                    if (viewModel.progressMap.isNotEmpty()) TransferPanel(viewModel.progressMap, viewModel)
                 }
             }
         }
@@ -295,15 +295,15 @@ fun LockedGateway(viewModel: DisboxViewModel) {
         Icon(Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.primary)
         Spacer(Modifier.height(24.dp))
         if (!hasPin) {
-            Text("PIN Belum Diset", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            Text(viewModel.t("pin_not_set"), fontSize = 20.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(8.dp))
-            Text("Silakan buat PIN di Settings.", textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+            Text(viewModel.t("pin_not_set_desc"), textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
             Spacer(Modifier.height(24.dp))
-            Button(onClick = { viewModel.setPage("settings") }) { Text("Buka Settings") }
+            Button(onClick = { viewModel.setPage("settings") }) { Text(viewModel.t("settings")) }
         } else {
-            Text("Area Terkunci", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            Text(viewModel.t("locked_area"), fontSize = 20.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(8.dp))
-            Text("Masukkan PIN Anda untuk melihat konten yang dilindungi", textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+            Text(viewModel.t("locked_area_desc"), textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
             Spacer(Modifier.height(32.dp))
             OutlinedTextField(
                 value = pin, onValueChange = { pin = it },
@@ -313,7 +313,7 @@ fun LockedGateway(viewModel: DisboxViewModel) {
             )
             if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
             Spacer(Modifier.height(24.dp))
-            Button(onClick = { viewModel.verifyPin(pin) { if (!it) { error = "PIN salah"; pin = "" } } }, enabled = pin.length >= 4, modifier = Modifier.fillMaxWidth().height(56.dp)) { Text("Buka Akses") }
+            Button(onClick = { viewModel.verifyPin(pin) { if (!it) { error = viewModel.t("pin_error_wrong"); pin = "" } } }, enabled = pin.length >= 4, modifier = Modifier.fillMaxWidth().height(56.dp)) { Text(viewModel.t("unlock_access")) }
         }
     }
 }
@@ -328,7 +328,7 @@ fun PinPromptModal(title: String, onVerified: () -> Unit, onCancel: () -> Unit, 
         text = {
             Column {
                 OutlinedTextField(
-                    value = pin, onValueChange = { pin = it }, label = { Text("Masukkan PIN") },
+                    value = pin, onValueChange = { pin = it }, label = { Text(viewModel.t("pin_current_placeholder")) },
                     visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
                     modifier = Modifier.fillMaxWidth(),
                     keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.NumberPassword)
@@ -336,8 +336,8 @@ fun PinPromptModal(title: String, onVerified: () -> Unit, onCancel: () -> Unit, 
                 if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
             }
         },
-        confirmButton = { Button(onClick = { viewModel.verifyPin(pin) { if (it) onVerified() else { error = "PIN salah"; pin = "" } } }) { Text("Verifikasi") } },
-        dismissButton = { TextButton(onClick = onCancel) { Text("Batal") } }
+        confirmButton = { Button(onClick = { viewModel.verifyPin(pin) { if (it) onVerified() else { error = viewModel.t("pin_error_wrong"); pin = "" } } }) { Text(viewModel.t("confirm")) } },
+        dismissButton = { TextButton(onClick = onCancel) { Text(viewModel.t("cancel")) } }
     )
 }
 
@@ -353,13 +353,13 @@ fun LoginScreen(viewModel: DisboxViewModel) {
             Icon(Icons.Default.Cloud, contentDescription = null, tint = Color.White, modifier = Modifier.size(40.dp))
         }
         Spacer(Modifier.height(24.dp)); Text("Disbox", fontSize = 32.sp, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onBackground)
-        Text("Discord Cloud Storage", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+        Text(viewModel.t("subtitle"), fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
         Spacer(Modifier.height(32.dp))
-        OutlinedTextField(value = url, onValueChange = { url = it }, label = { Text("Webhook URL") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(10.dp))
+        OutlinedTextField(value = url, onValueChange = { url = it }, label = { Text(viewModel.t("webhook_url")) }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(10.dp))
         Spacer(Modifier.height(24.dp))
         Button(onClick = { viewModel.connect(url) }, modifier = Modifier.fillMaxWidth().height(56.dp), shape = RoundedCornerShape(10.dp), enabled = !viewModel.isLoading) {
             if (viewModel.isLoading) CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp))
-            else Text("Connect Drive", fontWeight = FontWeight.Bold)
+            else Text(viewModel.t("connect_drive"), fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -367,6 +367,7 @@ fun LoginScreen(viewModel: DisboxViewModel) {
 @Composable
 fun FolderSelectionDialog(
     allFiles: List<DisboxFile>,
+    viewModel: DisboxViewModel,
     onFolderSelected: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -388,7 +389,7 @@ fun FolderSelectionDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Pilih Folder Tujuan") },
+        title = { Text(viewModel.t("pilih_tujuan")) },
         text = {
             Box(Modifier.heightIn(max = 300.dp)) {
                 LazyColumn {
@@ -406,7 +407,7 @@ fun FolderSelectionDialog(
             }
         },
         confirmButton = {},
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Batal") } }
+        dismissButton = { TextButton(onClick = onDismiss) { Text(viewModel.t("cancel")) } }
     )
 }
 
@@ -423,8 +424,9 @@ fun DriveScreen(viewModel: DisboxViewModel, isLockedView: Boolean = false, isSta
     var itemToRename by remember { mutableStateOf<Pair<String, String?>?>(null) }
     var pinPrompt by remember { mutableStateOf<(() -> Unit)?>(null) }
     var showFolderPickerForUnlock by remember { mutableStateOf(false) }
+    var showSortMenu by remember { mutableStateOf(false) }
 
-    val processed = remember(viewModel.allFiles, viewModel.currentPath, isLockedView, isStarredView, isRecentView) {
+    val processed = remember(viewModel.allFiles, viewModel.currentPath, isLockedView, isStarredView, isRecentView, viewModel.sortMode) {
         val fileList = mutableListOf<DisboxFile>(); val folderList = mutableListOf<Pair<String, String>>()
         val dirPath = if (viewModel.currentPath == "/") "" else viewModel.currentPath.trim('/')
         val folderLockStatus = mutableMapOf<String, Pair<Int, Int>>()
@@ -462,8 +464,27 @@ fun DriveScreen(viewModel: DisboxViewModel, isLockedView: Boolean = false, isSta
                 if (shouldIncludeDir && (isStarredView || parentPath == dirPath)) folderList.add(dirName to currentAcc)
             }
         }
-        if (isRecentView) fileList.sortByDescending { it.createdAt }
-        folderList.distinctBy { it.second }.sortedBy { it.first } to fileList.filter { !it.path.endsWith(".keep") }.sortedBy { it.path.split("/").last() }
+        
+        val sortedFolders = folderList.distinctBy { it.second }.sortedWith { a, b ->
+            when (viewModel.sortMode) {
+                "name" -> a.first.lowercase().compareTo(b.first.lowercase())
+                else -> a.first.lowercase().compareTo(b.first.lowercase())
+            }
+        }
+        
+        val sortedFiles = fileList.filter { !it.path.endsWith(".keep") }.sortedWith { a, b ->
+            if (isRecentView) {
+                b.createdAt.compareTo(a.createdAt)
+            } else {
+                when (viewModel.sortMode) {
+                    "name" -> a.path.split("/").last().lowercase().compareTo(b.path.split("/").last().lowercase())
+                    "date" -> b.createdAt.compareTo(a.createdAt)
+                    "size" -> b.size.compareTo(a.size)
+                    else -> 0
+                }
+            }
+        }
+        sortedFolders to sortedFiles
     }
     val folders = processed.first; val currentFiles = processed.second
 
@@ -476,11 +497,11 @@ fun DriveScreen(viewModel: DisboxViewModel, isLockedView: Boolean = false, isSta
                 ) {
                     Box(modifier = Modifier.weight(1f)) {
                         if (viewModel.selectionSet.isNotEmpty()) {
-                            Text("${viewModel.selectionSet.size} terpilih", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                            Text("${viewModel.selectionSet.size} ${viewModel.t("terpilih")}", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                         } else if (isStarredView) {
-                            Text("Starred", Modifier.padding(8.dp), fontWeight = FontWeight.Bold)
+                            Text(viewModel.t("starred"), Modifier.padding(8.dp), fontWeight = FontWeight.Bold)
                         } else if (isRecentView) {
-                            Text("Recent", Modifier.padding(8.dp), fontWeight = FontWeight.Bold)
+                            Text(viewModel.t("recent"), Modifier.padding(8.dp), fontWeight = FontWeight.Bold)
                         } else {
                             BreadcrumbBar(viewModel.currentPath) { viewModel.navigate(it) }
                         }
@@ -525,7 +546,37 @@ fun DriveScreen(viewModel: DisboxViewModel, isLockedView: Boolean = false, isSta
                             Icon(Icons.Default.Close, contentDescription = null) 
                         }
                     } else {
-                        MetadataStatusIndicator(viewModel.metadataStatus)
+                        if (viewModel.activePage != "settings") {
+                            MetadataStatusIndicator(viewModel.metadataStatus, viewModel)
+                        }
+                        
+                        Box(contentAlignment = Alignment.Center) {
+                            IconButton(onClick = { showSortMenu = true }) {
+                                Icon(Icons.Default.Sort, contentDescription = "Sort")
+                            }
+                            DropdownMenu(
+                                expanded = showSortMenu,
+                                onDismissRequest = { showSortMenu = false },
+                                modifier = Modifier.background(MaterialTheme.colorScheme.surface)
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text(viewModel.t("sort_name")) },
+                                    onClick = { viewModel.updateSortMode("name"); showSortMenu = false },
+                                    leadingIcon = { if (viewModel.sortMode == "name") Icon(Icons.Default.Check, null) }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(viewModel.t("sort_date")) },
+                                    onClick = { viewModel.updateSortMode("date"); showSortMenu = false },
+                                    leadingIcon = { if (viewModel.sortMode == "date") Icon(Icons.Default.Check, null) }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(viewModel.t("sort_size")) },
+                                    onClick = { viewModel.updateSortMode("size"); showSortMenu = false },
+                                    leadingIcon = { if (viewModel.sortMode == "size") Icon(Icons.Default.Check, null) }
+                                )
+                            }
+                        }
+
                         IconButton(onClick = { viewModel.setView(if (viewModel.viewMode == "grid") "list" else "grid") }) { 
                             Icon(if (viewModel.viewMode == "grid") Icons.Default.List else Icons.Default.GridView, contentDescription = null) 
                         }
@@ -554,7 +605,7 @@ fun DriveScreen(viewModel: DisboxViewModel, isLockedView: Boolean = false, isSta
             if (!isStarredView && !isRecentView && !isLockedView) {
                 Column(horizontalAlignment = Alignment.End) {
                     if (viewModel.moveCopyMode != null) {
-                        ExtendedFloatingActionButton(onClick = { viewModel.paste(viewModel.currentPath) }, icon = { Icon(Icons.Default.ContentPaste, contentDescription = null) }, text = { Text("Paste here") })
+                        ExtendedFloatingActionButton(onClick = { viewModel.paste(viewModel.currentPath) }, icon = { Icon(Icons.Default.ContentPaste, contentDescription = null) }, text = { Text(viewModel.t("save")) })
                     } else {
                         SmallFloatingActionButton(onClick = { showCreateFolderDialog = true }, modifier = Modifier.padding(bottom = 8.dp)) { Icon(Icons.Default.CreateNewFolder, contentDescription = null, tint = MaterialTheme.colorScheme.primary) }
                         FloatingActionButton(onClick = { filePicker.launch("*/*") }) { Icon(Icons.Default.Add, contentDescription = null, tint = Color.White) }
@@ -565,7 +616,7 @@ fun DriveScreen(viewModel: DisboxViewModel, isLockedView: Boolean = false, isSta
     ) { padding ->
         Box(Modifier.padding(padding).fillMaxSize()) {
             if (folders.isEmpty() && currentFiles.isEmpty()) {
-                Box(Modifier.fillMaxSize(), Alignment.Center) { Text("Folder kosong", color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)) }
+                Box(Modifier.fillMaxSize(), Alignment.Center) { Text(viewModel.t("empty_folder"), color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)) }
             } else if (viewModel.viewMode == "grid") {
                 LazyVerticalGrid(columns = GridCells.Adaptive(minSize = (100.dp * viewModel.zoomLevel)), contentPadding = PaddingValues(12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(folders) { (name, path) -> FolderItemGrid(name, path, viewModel) {
@@ -583,11 +634,12 @@ fun DriveScreen(viewModel: DisboxViewModel, isLockedView: Boolean = false, isSta
                     items(currentFiles) { f -> FileItemList(f, viewModel) { if (f.isLocked && !viewModel.isVerified) pinPrompt = { previewFile = f } else previewFile = f } }
                 }
             }
-            if (pinPrompt != null) PinPromptModal("Buka Area Terkunci", { val a = pinPrompt; pinPrompt = null; a?.invoke() }, { pinPrompt = null }, viewModel)
+            if (pinPrompt != null) PinPromptModal(viewModel.t("locked_area"), { val a = pinPrompt; pinPrompt = null; a?.invoke() }, { pinPrompt = null }, viewModel)
             
             if (showFolderPickerForUnlock) {
                 FolderSelectionDialog(
                     allFiles = viewModel.allFiles,
+                    viewModel = viewModel,
                     onFolderSelected = { dest ->
                         viewModel.unlockTo(viewModel.selectionSet, dest)
                         showFolderPickerForUnlock = false
@@ -598,14 +650,14 @@ fun DriveScreen(viewModel: DisboxViewModel, isLockedView: Boolean = false, isSta
         }
     }
     if (showCreateFolderDialog) {
-        AlertDialog(onDismissRequest = { showCreateFolderDialog = false }, title = { Text("New Folder") }, text = { OutlinedTextField(folderName, { folderName = it }, label = { Text("Name") }) },
-            confirmButton = { Button(onClick = { if (folderName.isNotBlank()) { viewModel.createFolder(folderName); folderName = ""; showCreateFolderDialog = false } }) { Text("Create") } },
-            dismissButton = { TextButton(onClick = { showCreateFolderDialog = false }) { Text("Cancel") } })
+        AlertDialog(onDismissRequest = { showCreateFolderDialog = false }, title = { Text(viewModel.t("new_folder")) }, text = { OutlinedTextField(folderName, { folderName = it }, label = { Text(viewModel.t("folder_name_placeholder")) }) },
+            confirmButton = { Button(onClick = { if (folderName.isNotBlank()) { viewModel.createFolder(folderName); folderName = ""; showCreateFolderDialog = false } }) { Text(viewModel.t("create")) } },
+            dismissButton = { TextButton(onClick = { showCreateFolderDialog = false }) { Text(viewModel.t("cancel")) } })
     }
     if (showDeleteConfirm != null) {
-        AlertDialog(onDismissRequest = { showDeleteConfirm = null }, title = { Text("Delete Items") }, text = { Text("Are you sure you want to delete ${showDeleteConfirm!!.size} items?") },
-            confirmButton = { Button(onClick = { viewModel.deletePaths(showDeleteConfirm!!); showDeleteConfirm = null }, colors = ButtonDefaults.buttonColors(MaterialTheme.colorScheme.error)) { Text("Delete") } },
-            dismissButton = { TextButton(onClick = { showDeleteConfirm = null }) { Text("Cancel") } })
+        AlertDialog(onDismissRequest = { showDeleteConfirm = null }, title = { Text(viewModel.t("delete")) }, text = { Text(viewModel.t("hapus_item", mapOf("count" to showDeleteConfirm!!.size.toString()))) },
+            confirmButton = { Button(onClick = { viewModel.deletePaths(showDeleteConfirm!!); showDeleteConfirm = null }, colors = ButtonDefaults.buttonColors(MaterialTheme.colorScheme.error)) { Text(viewModel.t("confirm")) } },
+            dismissButton = { TextButton(onClick = { showDeleteConfirm = null }) { Text(viewModel.t("cancel")) } })
     }
     if (previewFile != null) FilePreviewScreen(previewFile!!, viewModel) { previewFile = null }
 }
@@ -641,7 +693,7 @@ fun FilePreviewScreen(file: DisboxFile, viewModel: DisboxViewModel, onClose: () 
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onClose) { Icon(Icons.Default.Close, contentDescription = null) }
                 Column(Modifier.weight(1f)) { Text(name, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis); Text("${file.size / 1024} KB", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface.copy(0.6f)) }
-                Button(onClick = { viewModel.downloadFile(file); onClose() }) { Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("Download") }
+                Button(onClick = { viewModel.downloadFile(file); onClose() }) { Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text(viewModel.t("download")) }
             }
             Spacer(Modifier.height(16.dp))
             Box(Modifier.fillMaxSize().clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.background), Alignment.Center) {
@@ -649,7 +701,7 @@ fun FilePreviewScreen(file: DisboxFile, viewModel: DisboxViewModel, onClose: () 
                 else if (errorMsg != null) Text(errorMsg!!, color = MaterialTheme.colorScheme.error)
                 else if (previewImageFile != null) AsyncImage(ImageRequest.Builder(context).data(previewImageFile).build(), contentDescription = null, modifier = Modifier.fillMaxSize())
                 else if (previewText != null) Box(Modifier.verticalScroll(rememberScrollState()).padding(16.dp)) { Text(previewText!!, fontFamily = FontFamily.Monospace, fontSize = 12.sp) }
-                else Column(horizontalAlignment = Alignment.CenterHorizontally) { Text(getFileIcon(name), fontSize = 64.sp); Text("No preview", color = MaterialTheme.colorScheme.onSurface.copy(0.6f)) }
+                else Column(horizontalAlignment = Alignment.CenterHorizontally) { Text(getFileIcon(name), fontSize = 64.sp); Text(viewModel.t("empty_folder"), color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)) }
             }
         }
     }
@@ -668,67 +720,69 @@ fun FolderItemGrid(name: String, path: String, viewModel: DisboxViewModel, onCli
         GridFileItem(null, name, true, 0, isSelected, viewModel.selectionSet.isNotEmpty(), isLocked, isStarred, viewModel.zoomLevel, viewModel, { viewModel.toggleSelection(path) }, { if (viewModel.selectionSet.isNotEmpty()) viewModel.toggleSelection(path) else onClick() })
         var showMenu by remember { mutableStateOf(false) }
         Box(Modifier.align(Alignment.TopStart).combinedClickable(onClick={}, onLongClick={showMenu=true}).size(40.dp))
-        DropdownMenu(expanded = showMenu, onDismissRequest = {showMenu=false}) {
-            val targets = if (viewModel.selectionSet.contains(path)) viewModel.selectionSet else setOf(path)
-            val isBulk = targets.size > 1
+        Box {
+            DropdownMenu(expanded = showMenu, onDismissRequest = {showMenu=false}) {
+                val targets = if (viewModel.selectionSet.contains(path)) viewModel.selectionSet else setOf(path)
+                val isBulk = targets.size > 1
 
-            DropdownMenuItem(
-                text = { Text(if (isBulk) "Rename (tidak tersedia massal)" else "Rename") },
-                enabled = !isBulk,
-                onClick = { showRenameDialog = true; showMenu = false },
-                leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) }
-            )
-            DropdownMenuItem(
-                text = { Text(if (isBulk) "Move ${targets.size} item" else "Move") },
-                onClick = { viewModel.startMove(targets); showMenu = false },
-                leadingIcon = { Icon(Icons.Default.DriveFileMove, contentDescription = null) }
-            )
-            DropdownMenuItem(
-                text = { Text(if (isBulk) "Copy ${targets.size} item" else "Copy") },
-                onClick = { viewModel.startCopy(targets); showMenu = false },
-                leadingIcon = { Icon(Icons.Default.ContentCopy, contentDescription = null) }
-            )
-            DropdownMenuItem(
-                text = { Text(if (isBulk) "Kunci/Buka Massal" else if(isLocked) "Buka Kunci" else "Kunci Folder") },
-                onClick = { 
-                    viewModel.toggleBulkStatus(targets, isLocked = !isLocked)
-                    showMenu = false 
-                },
-                leadingIcon = { Icon(if(isLocked) Icons.Default.LockOpen else Icons.Default.Lock, contentDescription = null) }
-            )
-            DropdownMenuItem(
-                text = { Text(if (isBulk) "Beri/Hapus Star Massal" else if(isStarred) "Hapus Star" else "Beri Star") },
-                onClick = { 
-                    viewModel.toggleBulkStatus(targets, isStarred = !isStarred)
-                    showMenu = false 
-                },
-                leadingIcon = { Icon(if(isStarred) Icons.Default.StarBorder else Icons.Default.Star, contentDescription = null) }
-            )
-            DropdownMenuItem(
-                text = { Text(if (isBulk) "Hapus ${targets.size} item" else "Hapus", color=MaterialTheme.colorScheme.error) },
-                onClick = { 
-                    viewModel.deletePaths(targets.toList())
-                    showMenu = false 
-                },
-                leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, tint=MaterialTheme.colorScheme.error) }
-            )
+                DropdownMenuItem(
+                    text = { Text(if (isBulk) "Rename (N/A)" else viewModel.t("rename")) },
+                    enabled = !isBulk,
+                    onClick = { showRenameDialog = true; showMenu = false },
+                    leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) }
+                )
+                DropdownMenuItem(
+                    text = { Text(if (isBulk) viewModel.t("pindah_item", mapOf("count" to targets.size.toString())) else viewModel.t("move")) },
+                    onClick = { viewModel.startMove(targets); showMenu = false },
+                    leadingIcon = { Icon(Icons.Default.DriveFileMove, contentDescription = null) }
+                )
+                DropdownMenuItem(
+                    text = { Text(if (isBulk) viewModel.t("salin_item", mapOf("count" to targets.size.toString())) else viewModel.t("copy")) },
+                    onClick = { viewModel.startCopy(targets); showMenu = false },
+                    leadingIcon = { Icon(Icons.Default.ContentCopy, contentDescription = null) }
+                )
+                DropdownMenuItem(
+                    text = { Text(if (isBulk) "Lock/Unlock" else if(isLocked) viewModel.t("unlock") else viewModel.t("lock")) },
+                    onClick = { 
+                        viewModel.toggleBulkStatus(targets, isLocked = !isLocked)
+                        showMenu = false 
+                    },
+                    leadingIcon = { Icon(if(isLocked) Icons.Default.LockOpen else Icons.Default.Lock, contentDescription = null) }
+                )
+                DropdownMenuItem(
+                    text = { Text(if (isBulk) "Star/Unstar" else if(isStarred) viewModel.t("unstar") else viewModel.t("star")) },
+                    onClick = { 
+                        viewModel.toggleBulkStatus(targets, isStarred = !isStarred)
+                        showMenu = false 
+                    },
+                    leadingIcon = { Icon(if(isStarred) Icons.Default.StarBorder else Icons.Default.Star, contentDescription = null) }
+                )
+                DropdownMenuItem(
+                    text = { Text(if (isBulk) viewModel.t("hapus_item", mapOf("count" to targets.size.toString())) else viewModel.t("delete"), color=MaterialTheme.colorScheme.error) },
+                    onClick = { 
+                        viewModel.deletePaths(targets.toList())
+                        showMenu = false 
+                    },
+                    leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, tint=MaterialTheme.colorScheme.error) }
+                )
+            }
         }
     }
 
     if (showRenameDialog) {
         AlertDialog(
             onDismissRequest = { showRenameDialog = false },
-            title = { Text("Rename Folder") },
-            text = { OutlinedTextField(newFolderName, { newFolderName = it }, label = { Text("New Name") }) },
+            title = { Text(viewModel.t("rename")) },
+            text = { OutlinedTextField(newFolderName, { newFolderName = it }, label = { Text(viewModel.t("folder_name_placeholder")) }) },
             confirmButton = {
                 Button(onClick = {
                     if (newFolderName.isNotBlank() && newFolderName != name) {
                         viewModel.renamePath(path, newFolderName, null)
                     }
                     showRenameDialog = false
-                }) { Text("Rename") }
+                }) { Text(viewModel.t("save")) }
             },
-            dismissButton = { TextButton(onClick = { showRenameDialog = false }) { Text("Cancel") } }
+            dismissButton = { TextButton(onClick = { showRenameDialog = false }) { Text(viewModel.t("cancel")) } }
         )
     }
 }
@@ -744,75 +798,77 @@ fun FileItemGrid(file: DisboxFile, viewModel: DisboxViewModel, onClick: () -> Un
         GridFileItem(file, name, false, file.size, isSelected, viewModel.selectionSet.isNotEmpty(), file.isLocked, file.isStarred, viewModel.zoomLevel, viewModel, {viewModel.toggleSelection(file.id)}, { if(viewModel.selectionSet.isNotEmpty()) viewModel.toggleSelection(file.id) else onClick() })
         var showMenu by remember { mutableStateOf(false) }
         Box(Modifier.align(Alignment.TopStart).combinedClickable(onClick={}, onLongClick={showMenu=true}).size(40.dp))
-        DropdownMenu(expanded = showMenu, onDismissRequest = {showMenu=false}) {
-            val targets = if (viewModel.selectionSet.contains(file.id)) viewModel.selectionSet else setOf(file.id)
-            val isBulk = targets.size > 1
+        Box {
+            DropdownMenu(expanded = showMenu, onDismissRequest = {showMenu=false}) {
+                val targets = if (viewModel.selectionSet.contains(file.id)) viewModel.selectionSet else setOf(file.id)
+                val isBulk = targets.size > 1
 
-            DropdownMenuItem(
-                text = { Text("Download") },
-                onClick = { viewModel.downloadFile(file); showMenu = false },
-                leadingIcon = { Icon(Icons.Default.Download, contentDescription = null) }
-            )
-            DropdownMenuItem(
-                text = { Text(if (isBulk) "Rename (tidak tersedia massal)" else "Rename") },
-                enabled = !isBulk,
-                onClick = { 
-                    showRenameDialog = true
-                    showMenu = false 
-                },
-                leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) }
-            )
-            DropdownMenuItem(
-                text = { Text(if (isBulk) "Move ${targets.size} item" else "Move") },
-                onClick = { viewModel.startMove(targets); showMenu = false },
-                leadingIcon = { Icon(Icons.Default.DriveFileMove, contentDescription = null) }
-            )
-            DropdownMenuItem(
-                text = { Text(if (isBulk) "Copy ${targets.size} item" else "Copy") },
-                onClick = { viewModel.startCopy(targets); showMenu = false },
-                leadingIcon = { Icon(Icons.Default.ContentCopy, contentDescription = null) }
-            )
-            DropdownMenuItem(
-                text = { Text(if (isBulk) "Kunci/Buka Massal" else if(file.isLocked) "Buka Kunci" else "Kunci File") },
-                onClick = { 
-                    viewModel.toggleBulkStatus(targets, isLocked = !file.isLocked)
-                    showMenu = false 
-                },
-                leadingIcon = { Icon(if(file.isLocked) Icons.Default.LockOpen else Icons.Default.Lock, contentDescription = null) }
-            )
-            DropdownMenuItem(
-                text = { Text(if (isBulk) "Beri/Hapus Star Massal" else if(file.isStarred) "Hapus Star" else "Beri Star") },
-                onClick = { 
-                    viewModel.toggleBulkStatus(targets, isStarred = !file.isStarred)
-                    showMenu = false 
-                },
-                leadingIcon = { Icon(if(file.isStarred) Icons.Default.StarBorder else Icons.Default.Star, contentDescription = null) }
-            )
-            DropdownMenuItem(
-                text = { Text(if (isBulk) "Hapus ${targets.size} item" else "Hapus", color=MaterialTheme.colorScheme.error) },
-                onClick = { 
-                    viewModel.deletePaths(targets.toList())
-                    showMenu = false 
-                },
-                leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, tint=MaterialTheme.colorScheme.error) }
-            )
+                DropdownMenuItem(
+                    text = { Text(viewModel.t("download")) },
+                    onClick = { viewModel.downloadFile(file); showMenu = false },
+                    leadingIcon = { Icon(Icons.Default.Download, contentDescription = null) }
+                )
+                DropdownMenuItem(
+                    text = { Text(if (isBulk) "Rename (N/A)" else viewModel.t("rename")) },
+                    enabled = !isBulk,
+                    onClick = { 
+                        showRenameDialog = true
+                        showMenu = false 
+                    },
+                    leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) }
+                )
+                DropdownMenuItem(
+                    text = { Text(if (isBulk) viewModel.t("pindah_item", mapOf("count" to targets.size.toString())) else viewModel.t("move")) },
+                    onClick = { viewModel.startMove(targets); showMenu = false },
+                    leadingIcon = { Icon(Icons.Default.DriveFileMove, contentDescription = null) }
+                )
+                DropdownMenuItem(
+                    text = { Text(if (isBulk) viewModel.t("salin_item", mapOf("count" to targets.size.toString())) else viewModel.t("copy")) },
+                    onClick = { viewModel.startCopy(targets); showMenu = false },
+                    leadingIcon = { Icon(Icons.Default.ContentCopy, contentDescription = null) }
+                )
+                DropdownMenuItem(
+                    text = { Text(if (isBulk) "Lock/Unlock" else if(file.isLocked) viewModel.t("unlock") else viewModel.t("lock")) },
+                    onClick = { 
+                        viewModel.toggleBulkStatus(targets, isLocked = !file.isLocked)
+                        showMenu = false 
+                    },
+                    leadingIcon = { Icon(if(file.isLocked) Icons.Default.LockOpen else Icons.Default.Lock, contentDescription = null) }
+                )
+                DropdownMenuItem(
+                    text = { Text(if (isBulk) "Star/Unstar" else if(file.isStarred) viewModel.t("unstar") else viewModel.t("star")) },
+                    onClick = { 
+                        viewModel.toggleBulkStatus(targets, isStarred = !file.isStarred)
+                        showMenu = false 
+                    },
+                    leadingIcon = { Icon(if(file.isStarred) Icons.Default.StarBorder else Icons.Default.Star, contentDescription = null) }
+                )
+                DropdownMenuItem(
+                    text = { Text(if (isBulk) viewModel.t("hapus_item", mapOf("count" to targets.size.toString())) else viewModel.t("delete"), color=MaterialTheme.colorScheme.error) },
+                    onClick = { 
+                        viewModel.deletePaths(targets.toList())
+                        showMenu = false 
+                    },
+                    leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, tint=MaterialTheme.colorScheme.error) }
+                )
+            }
         }
     }
 
     if (showRenameDialog) {
         AlertDialog(
             onDismissRequest = { showRenameDialog = false },
-            title = { Text("Rename File") },
-            text = { OutlinedTextField(newName, { newName = it }, label = { Text("New Name") }) },
+            title = { Text(viewModel.t("rename")) },
+            text = { OutlinedTextField(newName, { newName = it }, label = { Text(viewModel.t("folder_name_placeholder")) }) },
             confirmButton = {
                 Button(onClick = {
                     if (newName.isNotBlank() && newName != name) {
                         viewModel.renamePath(file.path, newName, file.id)
                     }
                     showRenameDialog = false
-                }) { Text("Rename") }
+                }) { Text(viewModel.t("save")) }
             },
-            dismissButton = { TextButton(onClick = { showRenameDialog = false }) { Text("Cancel") } }
+            dismissButton = { TextButton(onClick = { showRenameDialog = false }) { Text(viewModel.t("cancel")) } }
         )
     }
 }
@@ -846,7 +902,7 @@ fun ListFileItem(file: DisboxFile?, name: String, isFolder: Boolean, size: Long 
                 Text(name, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface, fontSize = 14.sp * zoom, modifier = Modifier.weight(1f, false))
                 if (isStarred) { Spacer(modifier = Modifier.width(4.dp)); Icon(Icons.Default.Star, contentDescription = null, tint = Color(0xFFF0A500), modifier = Modifier.size(12.dp * zoom)) }
             }
-            Text(if (isFolder) "Folder" else "${size / 1024} KB", fontSize = 11.sp * zoom, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
+            Text(if (isFolder) viewModel.t("folder") else "${size / 1024} KB", fontSize = 11.sp * zoom, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
         }
     }
 }
@@ -866,22 +922,22 @@ fun GridFileItem(file: DisboxFile?, name: String, isFolder: Boolean, size: Long 
             }
             Spacer(Modifier.height(6.dp))
             Text(name, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis, color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface, fontSize = 11.sp * zoom, textAlign = TextAlign.Center)
-            Text(if (isFolder) "Folder" else "${size / 1024} KB", fontSize = 9.sp * zoom, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
+            Text(if (isFolder) viewModel.t("folder") else "${size / 1024} KB", fontSize = 9.sp * zoom, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
         }
     }
 }
 
 @Composable
-fun TransferPanel(progressMap: Map<String, Float>) {
+fun TransferPanel(progressMap: Map<String, Float>, viewModel: DisboxViewModel) {
     Card(modifier = Modifier.fillMaxWidth().padding(16.dp).heightIn(max = 200.dp), shape = RoundedCornerShape(16.dp), elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)) {
         Column(Modifier.padding(16.dp)) {
-            Text("Transfers", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+            Text(viewModel.t("transfers"), fontWeight = FontWeight.Bold, fontSize = 14.sp)
             Spacer(Modifier.height(8.dp))
             LazyColumn {
                 progressMap.forEach { (name, p) -> item {
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 4.dp)) {
                         Text(name, Modifier.weight(1f), fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        if (p >= 1f) Row(verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF00D4AA), modifier = Modifier.size(14.dp)); Text("Done", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF00D4AA)) }
+                        if (p >= 1f) Row(verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF00D4AA), modifier = Modifier.size(14.dp)); Text(viewModel.t("transfers_done", mapOf("count" to "")).trim(), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF00D4AA)) }
                         else { LinearProgressIndicator(progress = {p}, modifier = Modifier.width(80.dp).height(4.dp).clip(CircleShape)); Text("${(p * 100).toInt()}%", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary) }
                     }
                 } }
@@ -892,41 +948,41 @@ fun TransferPanel(progressMap: Map<String, Float>) {
 
 @Composable
 fun SettingsScreen(viewModel: DisboxViewModel) {
-    val CHUNK_OPTIONS = listOf(Triple("Free (10MB)", 10 * 1024 * 1024, "Standard limit"), Triple("Nitro (25MB)", 25 * 1024 * 1024, "Nitro Basic limit"), Triple("Premium (500MB)", 500 * 1024 * 1024, "Nitro Premium limit"))
+    val CHUNK_OPTIONS = listOf(Triple("Free (10MB)", 10 * 1024 * 1024, viewModel.t("chunk_free_desc")), Triple("Nitro (25MB)", 25 * 1024 * 1024, viewModel.t("chunk_nitro_desc")), Triple("Premium (500MB)", 500 * 1024 * 1024, viewModel.t("chunk_premium_desc")))
     val currentIndex = CHUNK_OPTIONS.indexOfFirst { it.second == viewModel.chunkSize }.coerceAtLeast(0)
     var showDisconnectConfirm by remember { mutableStateOf(false) }; var hasPin by remember { mutableStateOf(false) }; var showPinDialog by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(Unit) { viewModel.checkHasPin { hasPin = it } }
+    
+    val totalSize = remember(viewModel.allFiles) { viewModel.allFiles.sumOf { it.size } }
+    val formattedSize = remember(totalSize) { 
+        val gb = totalSize.toDouble() / (1024 * 1024 * 1024)
+        if (gb < 1.0) "${totalSize / (1024 * 1024)} MB"
+        else "%.2f GB".format(gb)
+    }
+
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(24.dp).verticalScroll(rememberScrollState())) {
-        Text("Settings", fontSize = 28.sp, fontWeight = FontWeight.ExtraBold)
+        Text(viewModel.t("settings"), fontSize = 28.sp, fontWeight = FontWeight.ExtraBold)
         Spacer(Modifier.height(32.dp))
-        
+
         Card(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
             Column(Modifier.padding(20.dp)) {
-                Text("App Behavior", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(bottom = 12.dp))
-                Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), Arrangement.SpaceBetween, Alignment.CenterVertically) {
-                    Column { Text("Dark Mode", fontWeight = FontWeight.Bold); Text("Toggle color theme", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface.copy(0.6f)) }
-                    Switch(viewModel.theme == "dark", { viewModel.toggleTheme() })
-                }
-                Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), Arrangement.SpaceBetween, Alignment.CenterVertically) {
-                    Column { Text("Live Previews", fontWeight = FontWeight.Bold); Text("Show images in grid", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface.copy(0.6f)) }
-                    Switch(viewModel.showPreviews, { viewModel.updatePreviews(it) })
-                }
-                Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), Arrangement.SpaceBetween, Alignment.CenterVertically) {
-                    Column { Text("Show Recent Tab", fontWeight = FontWeight.Bold); Text("Display Recent in navigation", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface.copy(0.6f)) }
-                    Switch(viewModel.showRecent, { viewModel.updateRecent(it) })
-                }
+                Text(viewModel.t("storage"), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(bottom = 8.dp))
+                Text(formattedSize, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
+                Text("Discord Unlimited ∞", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface.copy(0.6f))
             }
         }
 
         Card(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
             Column(Modifier.padding(20.dp)) {
-                Text("Security", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(bottom = 12.dp))
-                Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) { Text("Master PIN", fontWeight = FontWeight.Bold); Text(if (hasPin) "PIN aktif. Item aman." else "PIN belum diset.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface.copy(0.6f)) }
-                    if (!hasPin) Button(onClick = { showPinDialog = "set" }, contentPadding = PaddingValues(horizontal = 12.dp)) { Text("Set PIN", fontSize = 12.sp) }
-                    else Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { 
-                        OutlinedButton(onClick = { showPinDialog = "change" }, contentPadding = PaddingValues(horizontal = 12.dp)) { Text("Ubah", fontSize = 12.sp) }
-                        OutlinedButton(onClick = { showPinDialog = "remove" }, colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error), contentPadding = PaddingValues(horizontal = 12.dp)) { Text("Hapus", fontSize = 12.sp) }
+                Text(viewModel.t("language"), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(bottom = 12.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("id" to "ID", "en" to "EN", "zh" to "ZH").forEach { (code, label) ->
+                        Button(
+                            onClick = { viewModel.updateLanguage(code) },
+                            colors = ButtonDefaults.buttonColors(containerColor = if (viewModel.language == code) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface),
+                            modifier = Modifier.weight(1f),
+                            contentPadding = PaddingValues(0.dp)
+                        ) { Text(label) }
                     }
                 }
             }
@@ -934,7 +990,39 @@ fun SettingsScreen(viewModel: DisboxViewModel) {
 
         Card(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
             Column(Modifier.padding(20.dp)) {
-                Text("Interface Zoom", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(bottom = 12.dp))
+                Text(viewModel.t("app_behavior"), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(bottom = 12.dp))
+                Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), Arrangement.SpaceBetween, Alignment.CenterVertically) {
+                    Column { Text(viewModel.t("dark"), fontWeight = FontWeight.Bold); Text(viewModel.t("theme"), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface.copy(0.6f)) }
+                    Switch(viewModel.theme == "dark", { viewModel.toggleTheme() })
+                }
+                Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), Arrangement.SpaceBetween, Alignment.CenterVertically) {
+                    Column { Text(viewModel.t("previews"), fontWeight = FontWeight.Bold); Text(viewModel.t("previews_desc"), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface.copy(0.6f)) }
+                    Switch(viewModel.showPreviews, { viewModel.updatePreviews(it) })
+                }
+                Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), Arrangement.SpaceBetween, Alignment.CenterVertically) {
+                    Column { Text(viewModel.t("show_recent"), fontWeight = FontWeight.Bold); Text(viewModel.t("show_recent_desc"), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface.copy(0.6f)) }
+                    Switch(viewModel.showRecent, { viewModel.updateRecent(it) })
+                }
+            }
+        }
+
+        Card(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+            Column(Modifier.padding(20.dp)) {
+                Text(viewModel.t("security"), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(bottom = 12.dp))
+                Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) { Text("Master PIN", fontWeight = FontWeight.Bold); Text(if (hasPin) viewModel.t("pin_active") else viewModel.t("pin_not_set_security"), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface.copy(0.6f)) }
+                    if (!hasPin) Button(onClick = { showPinDialog = "set" }, contentPadding = PaddingValues(horizontal = 12.dp)) { Text(viewModel.t("set_pin"), fontSize = 12.sp) }
+                    else Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { 
+                        OutlinedButton(onClick = { showPinDialog = "change" }, contentPadding = PaddingValues(horizontal = 12.dp)) { Text(viewModel.t("rename"), fontSize = 12.sp) }
+                        OutlinedButton(onClick = { showPinDialog = "remove" }, colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error), contentPadding = PaddingValues(horizontal = 12.dp)) { Text(viewModel.t("delete"), fontSize = 12.sp) }
+                    }
+                }
+            }
+        }
+
+        Card(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+            Column(Modifier.padding(20.dp)) {
+                Text(viewModel.t("ui_scale"), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(bottom = 12.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Slider(viewModel.zoomLevel, { viewModel.setZoom(it) }, valueRange = 0.6f..1.5f, modifier = Modifier.weight(1f))
                     Spacer(Modifier.width(12.dp))
@@ -945,7 +1033,7 @@ fun SettingsScreen(viewModel: DisboxViewModel) {
 
         Card(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
             Column(Modifier.padding(20.dp)) {
-                Text("Chunk Size", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(bottom = 12.dp))
+                Text(viewModel.t("chunk_size"), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(bottom = 12.dp))
                 Text("${CHUNK_OPTIONS[currentIndex].first} - ${CHUNK_OPTIONS[currentIndex].third}", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 Slider(currentIndex.toFloat(), { viewModel.setChunk(CHUNK_OPTIONS[it.toInt()].second) }, valueRange = 0f..2f, steps = 1)
             }
@@ -953,30 +1041,30 @@ fun SettingsScreen(viewModel: DisboxViewModel) {
 
         Card(modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
             Column(Modifier.padding(20.dp)) {
-                Text("Account", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(bottom = 12.dp))
+                Text(viewModel.t("account"), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(bottom = 12.dp))
                 Text("Webhook: ${viewModel.webhookUrl.take(20)}...", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface.copy(0.6f))
                 Spacer(Modifier.height(16.dp))
-                Button(onClick = { showDisconnectConfirm = true }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error), modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(10.dp)) { Text("Disconnect Session") }
+                Button(onClick = { showDisconnectConfirm = true }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error), modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(10.dp)) { Text(viewModel.t("disconnect")) }
             }
         }
         
-        Text("Disbox Mobile v3.0.0", modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface.copy(0.4f))
+        Text("Disbox Mobile ${viewModel.latestVersion}", modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface.copy(0.4f))
     }
     if (showPinDialog != null) PinSettingsDialog(showPinDialog!!, { showPinDialog = null; viewModel.checkHasPin { hasPin = it } }, viewModel)
-    if (showDisconnectConfirm) AlertDialog(onDismissRequest = { showDisconnectConfirm = false }, title = { Text("Disconnect") }, text = { Text("Are you sure?") }, confirmButton = { Button(onClick = { viewModel.disconnect(); showDisconnectConfirm = false }, colors = ButtonDefaults.buttonColors(MaterialTheme.colorScheme.error)) { Text("Disconnect") } }, dismissButton = { TextButton(onClick = { showDisconnectConfirm = false }) { Text("Batal") } })
+    if (showDisconnectConfirm) AlertDialog(onDismissRequest = { showDisconnectConfirm = false }, title = { Text(viewModel.t("disconnect")) }, text = { Text(viewModel.t("confirm_disconnect")) }, confirmButton = { Button(onClick = { viewModel.disconnect(); showDisconnectConfirm = false }, colors = ButtonDefaults.buttonColors(MaterialTheme.colorScheme.error)) { Text(viewModel.t("confirm")) } }, dismissButton = { TextButton(onClick = { showDisconnectConfirm = false }) { Text(viewModel.t("cancel")) } })
 }
 
 @Composable
 fun PinSettingsDialog(mode: String, onClose: () -> Unit, viewModel: DisboxViewModel) {
     var step by remember { mutableStateOf(if (mode == "set") "new" else "verify") }; var currentPin by remember { mutableStateOf("") }; var newPin by remember { mutableStateOf("") }; var confirmPin by remember { mutableStateOf("") }; var error by remember { mutableStateOf("") }
-    AlertDialog(onDismissRequest = onClose, title = { Text(when(mode) { "set" -> "Set PIN"; "change" -> "Ubah PIN"; else -> "Hapus PIN" }) },
+    AlertDialog(onDismissRequest = onClose, title = { Text(when(mode) { "set" -> viewModel.t("set_pin"); "change" -> viewModel.t("change_pin"); else -> viewModel.t("remove_pin") }) },
         text = { Column {
-            if (step == "verify") OutlinedTextField(currentPin, { currentPin = it }, label = { Text("PIN Saat Ini") }, visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(), keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.NumberPassword))
-            else { OutlinedTextField(newPin, { newPin = it }, label = { Text("PIN Baru") }, visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(), keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.NumberPassword)); OutlinedTextField(confirmPin, { confirmPin = it }, label = { Text("Konfirmasi PIN") }, visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(), keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.NumberPassword)) }
+            if (step == "verify") OutlinedTextField(currentPin, { currentPin = it }, label = { Text(viewModel.t("pin_current_placeholder")) }, visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(), keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.NumberPassword))
+            else { OutlinedTextField(newPin, { newPin = it }, label = { Text(viewModel.t("pin_new_placeholder")) }, visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(), keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.NumberPassword)); OutlinedTextField(confirmPin, { confirmPin = it }, label = { Text(viewModel.t("pin_confirm_placeholder")) }, visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(), keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.NumberPassword)) }
             if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error)
         } },
-        confirmButton = { Button(onClick = { if (step == "verify") viewModel.verifyPin(currentPin) { if (it) { if (mode == "remove") viewModel.removePin { onClose() } else { step = "new"; error = "" } } else error = "PIN salah" } else { if (newPin.length < 4) error = "Min 4 angka"; else if (newPin != confirmPin) error = "Tidak cocok"; else viewModel.setPin(newPin) { onClose() } } }) { Text(if (step == "verify" && mode != "remove") "Lanjut" else "Simpan") } },
-        dismissButton = { TextButton(onClick = onClose) { Text("Batal") } })
+        confirmButton = { Button(onClick = { if (step == "verify") viewModel.verifyPin(currentPin) { if (it) { if (mode == "remove") viewModel.removePin { onClose() } else { step = "new"; error = "" } } else error = viewModel.t("pin_error_wrong") } else { if (newPin.length < 4) error = viewModel.t("pin_error_min_length"); else if (newPin != confirmPin) error = viewModel.t("pin_error_mismatch"); else viewModel.setPin(newPin) { onClose() } } }) { Text(if (step == "verify" && mode != "remove") viewModel.t("next") else viewModel.t("save")) } },
+        dismissButton = { TextButton(onClick = onClose) { Text(viewModel.t("cancel")) } })
 }
 
 @Composable
