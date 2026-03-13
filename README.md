@@ -1,6 +1,6 @@
 # Disbox Mobile ⬡
 
-Disbox Mobile adalah pendamping seluler untuk ekosistem Disbox, memungkinkan Anda mengelola penyimpanan awan berbasis Discord langsung dari perangkat Android. Dibangun menggunakan **Jetpack Compose** dan **Kotlin**, aplikasi ini menawarkan pengalaman pengelolaan file yang modern, responsif, dan aman.
+Disbox Mobile adalah pendamping seluler untuk ekosistem Disbox, memungkinkan Anda mengelola penyimpanan awan berbasis Discord langsung dari perangkat Android. Dibangun menggunakan **Jetpack Compose** dan **Kotlin**, aplikasi ini menawarkan pengalaman pengelolaan file yang modern, responsif, dan sinkron sepenuhnya dengan versi Desktop.
 
 <p align="center">
   <img src="preview/Login.jpeg" width="22%" />
@@ -13,16 +13,24 @@ Disbox Mobile adalah pendamping seluler untuk ekosistem Disbox, memungkinkan And
 
 ## 🚀 Fitur Utama
 
-*   **Login Otomatis:** Simpan Webhook Anda satu kali dan hubungkan secara otomatis di sesi berikutnya.
-*   **Virtual File System:** Struktur folder yang identik dengan versi desktop.
-*   **Room Database (SQLite):** [BARU] Metadata kini disimpan di database Room yang super cepat dan hemat memori.
-*   **Rolling Snapshot:** [BARU] Sistem cadangan 3 snapshot metadata terbaru agar data tetap aman meskipun ada pesan Discord yang terhapus.
-*   **Sinkronisasi Real-time:** Deteksi perubahan file dari desktop secara otomatis setiap 30 detik.
-*   **Mode Tampilan Fleksibel:** Pilih antara mode **Grid** atau **List** dengan slider zoom untuk mengatur ukuran item.
-*   **Pratinjau Dokumen & Gambar:** Lihat file `.txt`, `.md`, `.json`, `.png`, `.jpg`, `.pdf`, dll langsung di aplikasi.
-*   **Notifikasi Latar Belakang:** Pantau progres upload dan download melalui panel notifikasi Android.
+*   **Sinkronisasi Metadata v3:** [BARU] Mendukung struktur `MetadataContainer` terbaru yang identik dengan Desktop, memungkinkan sinkronisasi PIN dan status file secara real-time.
+*   **Master PIN Cloud Sync:** [BARU] Atur Master PIN satu kali, dan gunakan di semua perangkat Anda. Hash PIN kini disimpan secara aman di dalam metadata terenkripsi di Discord.
+*   **Area Terkunci (Locked Area):** Tab khusus untuk menyimpan file/folder sensitif. Memerlukan verifikasi PIN untuk akses, pengunduhan, atau pemindahan.
+*   **Sistem Favorit (Starred):** Tandai file atau folder penting sebagai favorit. Sinkron dengan Desktop menggunakan logika berbasis file `.keep`.
+*   **Aksi Massal (Bulk Actions):** Pilih banyak file sekaligus untuk melakukan **Move, Copy, Delete, Star,** atau **Lock** secara bersamaan melalui bilah menu atas.
+*   **Unlock & Move:** [BARU] Fitur khusus untuk membuka kunci item dan langsung memindahkannya ke folder tujuan (termasuk root) dalam satu langkah.
+*   **Virtual File System:** Struktur folder yang tertata rapi di database **Room (SQLite)** yang cepat dan efisien.
+*   **Rolling Snapshot:** Sistem cadangan otomatis untuk 3 snapshot metadata terbaru guna mencegah kehilangan data.
+*   **Mode Tampilan Fleksibel:** Pilih antara mode **Grid** atau **List** dengan slider zoom real-time untuk mengatur ukuran item.
+*   **Interface Zoom:** Atur skala antarmuka global melalui halaman pengaturan agar sesuai dengan kenyamanan mata Anda.
 *   **Manajemen Tier:** Pilihan ukuran chunk (10MB Free, 25MB Nitro, 500MB Premium) sesuai limit akun Discord.
-*   **Keamanan:** Data metadata dienkripsi secara ringan dan dikirim langsung ke Discord tanpa server perantara.
+
+## 📱 Sinkronisasi Desktop & Mobile
+
+Aplikasi ini dirancang untuk bekerja secara harmonis dengan **Disbox Desktop**. 
+*   **Starred items** yang ditandai di HP akan muncul di PC.
+*   **Master PIN** yang dibuat di HP akan otomatis terbaca oleh aplikasi Desktop saat Anda login.
+*   Perubahan struktur folder di satu perangkat akan terdeteksi oleh perangkat lain dalam hitungan detik.
 
 ## 🛠 Prasyarat
 
@@ -38,8 +46,8 @@ Disbox Mobile adalah pendamping seluler untuk ekosistem Disbox, memungkinkan And
 
 ## ⚙️ Next Update
 ### Major
-1.  Video/Audio Streaming Player
-2.  Encrypt Individual Files
+1.  Video/Audio Streaming Player (In-App)
+2.  Auto-Backup Folder Gallery/Documents
 
 ## 🤝 Kontribusi
 
