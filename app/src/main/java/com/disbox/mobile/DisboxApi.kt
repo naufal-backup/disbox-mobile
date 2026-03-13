@@ -8,21 +8,32 @@ import androidx.room.withTransaction
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.Dispatchers
+import java.io.File
+import java.io.FileOutputStream
+import java.security.MessageDigest
+import java.util.*
 import kotlinx.coroutines.withContext
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
-import java.io.File
-import java.io.FileOutputStream
-import java.security.MessageDigest
-import java.util.UUID
 
 data class DisboxFile(
     val id: String = UUID.randomUUID().toString(),
     var path: String,
     val messageIds: List<String>,
     val size: Long,
-    val createdAt: Long = System.currentTimeMillis()
+    val createdAt: Long = System.currentTimeMillis(),
+    val isLocked: Boolean = false,
+    val isStarred: Boolean = false
+)
+
+data class MetadataContainer(
+    val files: List<DisboxFile>,
+    val pinHash: String? = null,
+    val lastMsgId: String? = null,
+    val isDirty: Boolean? = null,
+    val updatedAt: Long? = null,
+    val snapshotHistory: List<String>? = null
 )
 
 class DisboxApi(private val context: Context, var webhookUrl: String) {
@@ -31,16 +42,16 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
     var hashedWebhook: String? = null
     private var encryptionKey: ByteArray? = null
     
-    // [FIX] lastSyncedId = null pada setiap instance baru
-    // Karena DisboxApi selalu di-instantiate ulang saat ganti webhook,
-    // ini memastikan sync selalu download ulang dari Discord
+    private val baseUrl: String get() = webhookUrl.split("?")[0]
+
     var lastSyncedId: String? = null
-    var chunkSize = 8 * 1024 * 1024 // 8MB
+    var chunkSize = 8 * 1024 * 1024
     var onStatusChange: ((String) -> Unit)? = null
 
     private val db: DisboxDatabase by lazy { DisboxDatabase.getDatabase(context) }
     private val fileDao by lazy { db.fileDao() }
     private val metaDao by lazy { db.metadataSyncDao() }
+    private val settingsDao by lazy { db.settingsDao() }
 
     private val metadataDir: File by lazy {
         val dir = File(Environment.getExternalStorageDirectory(), "disbox")
@@ -57,33 +68,32 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
     }
 
     private fun hashWebhook(url: String): String {
-        val bytes = MessageDigest.getInstance("SHA-256").digest(url.toByteArray())
+        val bytes = MessageDigest.getInstance("SHA-256").digest(baseUrl.toByteArray())
         return bytes.joinToString("") { "%02x".format(it) }
     }
 
-    // Auto-migrate JSON lama ke SQLite jika ada
     private suspend fun migrateJsonToSqlite() = withContext(Dispatchers.IO) {
         val localFile = File(metadataDir, "$hashedWebhook.json")
         if (localFile.exists()) {
             try {
-                val type = object : TypeToken<Map<String, Any>>() {}.type
-                val map: Map<String, Any> = gson.fromJson(localFile.readText(), type)
-
-                @Suppress("UNCHECKED_CAST")
-                val files = gson.fromJson<List<DisboxFile>>(
-                    gson.toJson(map["files"]),
-                    object : TypeToken<List<DisboxFile>>() {}.type
-                )
+                val content = localFile.readText()
+                val container = try {
+                    gson.fromJson(content, MetadataContainer::class.java)
+                } catch (e: Exception) {
+                    val files = gson.fromJson<List<DisboxFile>>(content, object : TypeToken<List<DisboxFile>>() {}.type)
+                    MetadataContainer(files = files)
+                }
 
                 saveMetadataToLocal(
-                    files,
-                    map["lastMsgId"] as? String,
-                    map["isDirty"] == true,
-                    (map["snapshotHistory"] as? List<String>) ?: emptyList()
+                    container.files,
+                    container.lastMsgId,
+                    container.isDirty == true,
+                    container.snapshotHistory ?: emptyList()
                 )
+                
+                container.pinHash?.let { setPin(it, isAlreadyHashed = true) }
 
                 localFile.renameTo(File(metadataDir, "$hashedWebhook.json.bak"))
-                println("[migration] Migrated $hashedWebhook.json to SQLite")
             } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -107,7 +117,7 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
 
         var webhookMsgId: String? = null
         try {
-            val request = Request.Builder().url(webhookUrl).build()
+            val request = Request.Builder().url(baseUrl).build()
             val response = client.newCall(request).execute()
             if (response.isSuccessful) {
                 val body = response.body?.string()
@@ -117,7 +127,7 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
                         object : TypeToken<Map<String, Any>>() {}.type
                     )
                     val name = map["name"] as? String
-                    val match = Regex("dbx[:\\s]+(\\d+)").find(name ?: "")
+                    val match = Regex("(?:dbx|disbox|db)[:\\s]+(\\d+)").find(name ?: "")
                     webhookMsgId = match?.groupValues?.get(1)
                 }
             }
@@ -132,8 +142,8 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
         mapOf("best" to best, "history" to snapshotHistory)
     }
 
-    private suspend fun downloadMetadataFromMsg(msgId: String): List<DisboxFile> = withContext(Dispatchers.IO) {
-        val request = Request.Builder().url("$webhookUrl/messages/$msgId").build()
+    private suspend fun downloadMetadataFromMsg(msgId: String): MetadataContainer = withContext(Dispatchers.IO) {
+        val request = Request.Builder().url("$baseUrl/messages/$msgId").build()
         val response = client.newCall(request).execute()
         if (!response.isSuccessful) throw Exception("Message $msgId not accessible")
 
@@ -150,17 +160,19 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
             ?: attachments?.firstOrNull()?.get("url") as? String
             ?: throw Exception("No attachment")
 
-        val attReq = Request.Builder().url(url).build()
-        val attRes = client.newCall(attReq).execute()
+        val attRes = client.newCall(Request.Builder().url(url).build()).execute()
         if (!attRes.isSuccessful) throw Exception("Failed to download metadata file")
 
         val encryptedBytes = attRes.body?.bytes() ?: throw Exception("Empty metadata file")
-        
-        // [ENCRYPT] Decrypt metadata
         val decryptedBytes = encryptionKey?.let { CryptoUtils.decrypt(encryptedBytes, it) } ?: encryptedBytes
         val attBody = String(decryptedBytes, Charsets.UTF_8)
 
-        gson.fromJson(attBody, object : TypeToken<List<DisboxFile>>() {}.type)
+        try {
+            gson.fromJson(attBody, MetadataContainer::class.java)
+        } catch (e: Exception) {
+            val files = gson.fromJson<List<DisboxFile>>(attBody, object : TypeToken<List<DisboxFile>>() {}.type)
+            MetadataContainer(files = files)
+        }
     }
 
     suspend fun syncMetadata(forceId: String? = null): Boolean = withContext(Dispatchers.IO) {
@@ -179,25 +191,29 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
             val msgId = discMap["best"] as String
             val history = discMap["history"] as List<String>
 
+            val currentHash = hashedWebhook ?: return@withContext false
             val localFiles = getFileSystem()
-            if (forceId == null && msgId == lastSyncedId && localFiles.isNotEmpty()) {
+            val meta = metaDao.getMetadata(currentHash)
+            val localMsgId = meta?.lastMsgId
+
+            if (forceId == null && localFiles.isNotEmpty() && (msgId == lastSyncedId || msgId == localMsgId)) {
+                if (lastSyncedId != msgId) {
+                    lastSyncedId = msgId
+                    onStatusChange?.invoke("synced")
+                }
                 return@withContext true
             }
 
-            // [FIX] resolvedMsgId melacak msgId yang benar-benar berhasil didownload
-            // Sebelumnya: jika fallback berhasil, lastSyncedId di-set ke fid, tapi lalu
-            // saveMetadataToLocal dipanggil dengan "lastSyncedId ?: msgId" yang override kembali ke msgId asli
             var resolvedMsgId = msgId
-            var files: List<DisboxFile>? = null
+            var container: MetadataContainer? = null
 
             try {
-                files = downloadMetadataFromMsg(msgId)
+                container = downloadMetadataFromMsg(msgId)
             } catch (e: Exception) {
                 val fallbacks = history.reversed().filter { it != msgId }
                 for (fid in fallbacks) {
                     try {
-                        files = downloadMetadataFromMsg(fid)
-                        // [FIX] Catat fid yang berhasil sebagai resolvedMsgId
+                        container = downloadMetadataFromMsg(fid)
                         resolvedMsgId = fid
                         break
                     } catch (err: Exception) {
@@ -206,9 +222,9 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
                 }
             }
 
-            if (files != null) {
-                // [FIX] Gunakan resolvedMsgId yang konsisten (bukan campur lastSyncedId dan msgId)
-                saveMetadataToLocal(files, resolvedMsgId)
+            if (container != null) {
+                saveMetadataToLocal(container.files, resolvedMsgId)
+                container.pinHash?.let { setPin(it, isAlreadyHashed = true) }
                 lastSyncedId = resolvedMsgId
                 onStatusChange?.invoke("synced")
                 true
@@ -220,7 +236,6 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
         }
     }
 
-    // [FIX] Semua operasi DB menggunakan hashedWebhook sebagai filter
     private suspend fun saveMetadataToLocal(
         files: List<DisboxFile>,
         msgId: String? = null,
@@ -230,18 +245,21 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
         val currentHash = hashedWebhook ?: return@withContext
 
         db.withTransaction {
-            // [FIX] deleteAllByHash — hanya hapus file milik hash ini
             fileDao.deleteAllByHash(currentHash)
             fileDao.insertAll(files.map { f ->
                 val parts = f.path.split("/")
                 val name = parts.last()
                 val parent = parts.dropLast(1).joinToString("/").ifEmpty { "/" }
-                // [FIX] Sertakan currentHash pada setiap FileEntity
-                FileEntity(f.id, currentHash, f.path, parent, name, f.size, f.createdAt, gson.toJson(f.messageIds))
+                FileEntity(
+                    f.id, currentHash, f.path, parent, name, f.size, f.createdAt, 
+                    gson.toJson(f.messageIds), 
+                    if (f.isLocked) 1 else 0, 
+                    if (f.isStarred) 1 else 0
+                )
             })
 
             val currentMeta = metaDao.getMetadata(currentHash)
-            var history = if (explicitHistory != null) {
+            val history = if (explicitHistory != null) {
                 explicitHistory.toMutableList()
             } else {
                 gson.fromJson<MutableList<String>>(
@@ -268,7 +286,6 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
         if (isDirty) onStatusChange?.invoke("dirty")
     }
 
-    // [FIX] getFileSystem — filter by hash, bukan ambil semua
     suspend fun getFileSystem(): List<DisboxFile> = withContext(Dispatchers.IO) {
         val currentHash = hashedWebhook ?: return@withContext emptyList()
         fileDao.getAllFilesByHash(currentHash).map {
@@ -277,17 +294,26 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
                 it.path,
                 gson.fromJson(it.messageIds, object : TypeToken<List<String>>() {}.type),
                 it.size,
-                it.createdAt
+                it.createdAt,
+                it.isLocked == 1,
+                it.isStarred == 1
             )
         }
     }
 
     suspend fun uploadMetadataToDiscord(explicitFiles: List<DisboxFile>? = null) = withContext(Dispatchers.IO) {
+        val currentHash = hashedWebhook ?: return@withContext
         val files = explicitFiles ?: getFileSystem()
         if (files.isEmpty()) return@withContext
-        val json = gson.toJson(files)
+        
+        val pinSetting = settingsDao.getSetting(currentHash, "pin_hash")
+        val container = MetadataContainer(
+            files = files,
+            pinHash = pinSetting?.value
+        )
+        
+        val json = gson.toJson(container)
 
-        // [ENCRYPT] Encrypt metadata
         val encryptedBytes = encryptionKey?.let { CryptoUtils.encrypt(json.toByteArray(Charsets.UTF_8), it) }
             ?: json.toByteArray(Charsets.UTF_8)
 
@@ -300,18 +326,14 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
             )
             .build()
 
-        val request = Request.Builder()
-            .url("$webhookUrl?wait=true")
-            .post(body)
-            .build()
+        val request = Request.Builder().url("$baseUrl?wait=true").post(body).build()
 
         try {
             val res = client.newCall(request).execute()
             if (res.isSuccessful) {
                 val resBody = res.body?.string()
                 val map: Map<String, Any> = gson.fromJson(
-                    resBody,
-                    object : TypeToken<Map<String, Any>>() {}.type
+                    resBody, object : TypeToken<Map<String, Any>>() {}.type
                 )
                 val newMsgId = map["id"] as? String
                 if (newMsgId != null) {
@@ -321,12 +343,9 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
 
                     val patchBody = gson.toJson(mapOf("name" to "dbx: $newMsgId"))
                         .toRequestBody("application/json".toMediaTypeOrNull())
-                    val patchReq = Request.Builder().url(webhookUrl).patch(patchBody).build()
-                    try { client.newCall(patchReq).execute() } catch (e: Exception) {}
+                    try { client.newCall(Request.Builder().url(baseUrl).patch(patchBody).build()).execute() } catch (e: Exception) {}
                 }
-            } else {
-                onStatusChange?.invoke("error")
-            }
+            } else onStatusChange?.invoke("error")
         } catch (e: Exception) {
             e.printStackTrace()
             onStatusChange?.invoke("error")
@@ -351,9 +370,7 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
 
     suspend fun deletePath(targetPath: String, id: String? = null) {
         val files = getFileSystem().filterNot {
-            (id != null && it.id == id) ||
-            (id == null && it.path == targetPath) ||
-            it.path.startsWith("$targetPath/")
+            (id != null && it.id == id) || (id == null && it.path == targetPath) || it.path.startsWith("$targetPath/")
         }
         saveMetadataToLocal(files, isDirty = true)
         uploadMetadataToDiscord(files)
@@ -362,9 +379,7 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
     suspend fun bulkDelete(items: List<String>) {
         val files = getFileSystem()
         val filtered = files.filterNot { f ->
-            items.any { item ->
-                f.id == item || f.path == item || f.path.startsWith("$item/")
-            }
+            items.any { item -> f.id == item || f.path == item || f.path.startsWith("$item/") }
         }
         saveMetadataToLocal(filtered, isDirty = true)
         uploadMetadataToDiscord(filtered)
@@ -378,8 +393,7 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
                     found = true; it.copy(path = newPath)
                 }
                 it.path.startsWith("$oldPath/") -> {
-                    found = true
-                    it.copy(path = it.path.replaceFirst("$oldPath/", "$newPath/"))
+                    found = true; it.copy(path = it.path.replaceFirst("$oldPath/", "$newPath/"))
                 }
                 else -> it
             }
@@ -400,21 +414,12 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
         val files = getFileSystem().toMutableList()
         val name = sourcePath.split("/").last()
         val newPath = if (destDir.isEmpty()) name else "$destDir/$name"
-
         val toAdd = mutableListOf<DisboxFile>()
         files.forEach { f ->
             if ((id != null && f.id == id) || (id == null && f.path == sourcePath)) {
-                toAdd.add(f.copy(
-                    id = UUID.randomUUID().toString(),
-                    path = newPath,
-                    createdAt = System.currentTimeMillis()
-                ))
+                toAdd.add(f.copy(id = UUID.randomUUID().toString(), path = newPath, createdAt = System.currentTimeMillis()))
             } else if (f.path.startsWith("$sourcePath/")) {
-                toAdd.add(f.copy(
-                    id = UUID.randomUUID().toString(),
-                    path = f.path.replaceFirst("$sourcePath/", "$newPath/"),
-                    createdAt = System.currentTimeMillis()
-                ))
+                toAdd.add(f.copy(id = UUID.randomUUID().toString(), path = f.path.replaceFirst("$sourcePath/", "$newPath/"), createdAt = System.currentTimeMillis()))
             }
         }
         if (toAdd.isNotEmpty()) {
@@ -424,12 +429,89 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
         }
     }
 
+    // PIN and Status methods
+    suspend fun bulkSetStatus(idsOrPaths: Set<String>, isLocked: Boolean? = null, isStarred: Boolean? = null) = withContext(Dispatchers.IO) {
+        val files = getFileSystem().toMutableList()
+        var changed = false
+        files.forEachIndexed { i, f ->
+            var newLocked = f.isLocked
+            var newStarred = f.isStarred
+            var itemChanged = false
+
+            if (isLocked != null) {
+                // Lock bersifat rekursif: isi folder ikut terkunci
+                val isLockTarget = idsOrPaths.any { target ->
+                    f.id == target || f.path == target || f.path == "$target/.keep" || f.path.startsWith("$target/")
+                }
+                if (isLockTarget) {
+                    newLocked = isLocked
+                    if (newLocked != f.isLocked) itemChanged = true
+                }
+            }
+
+            if (isStarred != null) {
+                // Star bersifat non-rekursif: hanya folder/file itu saja
+                val isStarTarget = idsOrPaths.any { target ->
+                    f.id == target || f.path == target || f.path == "$target/.keep"
+                }
+                if (isStarTarget) {
+                    newStarred = isStarred
+                    if (newStarred != f.isStarred) itemChanged = true
+                }
+            }
+
+            if (itemChanged) {
+                files[i] = f.copy(isLocked = newLocked, isStarred = newStarred)
+                changed = true
+            }
+        }
+        if (changed) {
+            saveMetadataToLocal(files, isDirty = true)
+            uploadMetadataToDiscord(files)
+        }
+    }
+
+    suspend fun setLocked(idOrPath: String, isLocked: Boolean) {
+        bulkSetStatus(setOf(idOrPath), isLocked = isLocked)
+    }
+
+    suspend fun setStarred(idOrPath: String, isStarred: Boolean) {
+        bulkSetStatus(setOf(idOrPath), isStarred = isStarred)
+    }
+
+    suspend fun setPin(pin: String, isAlreadyHashed: Boolean = false) = withContext(Dispatchers.IO) {
+        val hash = hashedWebhook ?: return@withContext false
+        val hashedPin = if (isAlreadyHashed) pin else MessageDigest.getInstance("SHA-256").digest(pin.toByteArray())
+            .joinToString("") { "%02x".format(it) }
+        settingsDao.insertOrReplace(SettingsEntity(hash, "pin_hash", hashedPin))
+        if (!isAlreadyHashed) uploadMetadataToDiscord()
+        true
+    }
+
+    suspend fun verifyPin(pin: String): Boolean = withContext(Dispatchers.IO) {
+        val hash = hashedWebhook ?: return@withContext false
+        val setting = settingsDao.getSetting(hash, "pin_hash") ?: return@withContext false
+        val hashedPin = MessageDigest.getInstance("SHA-256").digest(pin.toByteArray())
+            .joinToString("") { "%02x".format(it) }
+        setting.value == hashedPin
+    }
+
+    suspend fun hasPin(): Boolean = withContext(Dispatchers.IO) {
+        val hash = hashedWebhook ?: return@withContext false
+        settingsDao.getSetting(hash, "pin_hash") != null
+    }
+
+    suspend fun removePin() = withContext(Dispatchers.IO) {
+        val hash = hashedWebhook ?: return@withContext
+        settingsDao.deleteSetting(hash, "pin_hash")
+        uploadMetadataToDiscord()
+    }
+
     suspend fun uploadFile(uri: Uri, uploadPath: String, onProgress: (Float) -> Unit): List<String> = withContext(Dispatchers.IO) {
         val fileId = UUID.randomUUID().toString()
         val resolver = context.contentResolver
         val cursor = resolver.query(uri, null, null, null, null)
-        var size = 0L
-        var name = "file"
+        var size = 0L; var name = "file"
         cursor?.use {
             if (it.moveToFirst()) {
                 val sizeIdx = it.getColumnIndex(OpenableColumns.SIZE)
@@ -438,11 +520,9 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
                 if (nameIdx != -1) name = it.getString(nameIdx)
             }
         }
-
         val numChunks = Math.ceil(size.toDouble() / chunkSize).toInt().coerceAtLeast(1)
         val messageIds = mutableListOf<String>()
         val inputStream = resolver.openInputStream(uri) ?: throw Exception("Failed to open file")
-
         inputStream.use { stream ->
             val buffer = ByteArray(chunkSize)
             for (i in 0 until numChunks) {
@@ -453,55 +533,29 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
                     bytesRead += read
                 }
                 if (bytesRead == 0 && i > 0) break
-
                 var chunkData = buffer.copyOf(bytesRead)
-                
-                // [ENCRYPT] Encrypt chunk
                 chunkData = encryptionKey?.let { CryptoUtils.encrypt(chunkData, it) } ?: chunkData
-
                 val chunkName = "${fileId}_${name}.part$i"
-
-                val body = MultipartBody.Builder()
-                    .setType(MultipartBody.FORM)
-                    .addFormDataPart(
-                        "file", chunkName,
-                        chunkData.toRequestBody("application/octet-stream".toMediaTypeOrNull())
-                    )
-                    .build()
-
-                val request = Request.Builder().url("$webhookUrl?wait=true").post(body).build()
-                var success = false
-                var retries = 0
+                val body = MultipartBody.Builder().setType(MultipartBody.FORM)
+                    .addFormDataPart("file", chunkName, chunkData.toRequestBody("application/octet-stream".toMediaTypeOrNull())).build()
+                val request = Request.Builder().url("$baseUrl?wait=true").post(body).build()
+                var success = false; var retries = 0
                 while (!success && retries < 3) {
                     try {
                         val response = client.newCall(request).execute()
                         if (response.code == 429) {
-                            val rBody = response.body?.string()
-                            val map: Map<String, Any>? = rBody?.let {
-                                gson.fromJson(it, object : TypeToken<Map<String, Any>>() {}.type)
-                            }
+                            val rBody = response.body?.string(); val map: Map<String, Any>? = rBody?.let { gson.fromJson(it, object : TypeToken<Map<String, Any>>() {}.type) }
                             val retryAfter = ((map?.get("retry_after") as? Double) ?: 5.0) + 1.0
-                            Thread.sleep((retryAfter * 1000).toLong())
-                            continue
+                            Thread.sleep((retryAfter * 1000).toLong()); continue
                         }
                         if (!response.isSuccessful) throw Exception("Chunk $i upload failed")
-                        val rBody = response.body?.string() ?: ""
-                        val map: Map<String, Any> = gson.fromJson(
-                            rBody,
-                            object : TypeToken<Map<String, Any>>() {}.type
-                        )
-                        messageIds.add(map["id"] as String)
-                        success = true
-                    } catch (e: Exception) {
-                        retries++
-                        if (retries >= 3) throw e
-                        Thread.sleep(2000)
-                    }
+                        val rBody = response.body?.string() ?: ""; val map: Map<String, Any> = gson.fromJson(rBody, object : TypeToken<Map<String, Any>>() {}.type)
+                        messageIds.add(map["id"] as String); success = true
+                    } catch (e: Exception) { retries++; if (retries >= 3) throw e; Thread.sleep(2000) }
                 }
                 onProgress((i + 1).toFloat() / numChunks)
             }
         }
-
         val updatedFiles = getFileSystem().toMutableList()
         val entry = DisboxFile(fileId, uploadPath, messageIds, size)
         val idx = updatedFiles.indexOfFirst { it.id == fileId }
@@ -515,29 +569,17 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
         val messageIds = file.messageIds
         FileOutputStream(destFile).use { out ->
             for (i in messageIds.indices) {
-                val msgUrl = "$webhookUrl/messages/${messageIds[i]}"
-                val msgReq = Request.Builder().url(msgUrl).build()
-                val msgRes = client.newCall(msgReq).execute()
+                val msgUrl = "$baseUrl/messages/${messageIds[i]}"
+                val msgRes = client.newCall(Request.Builder().url(msgUrl).build()).execute()
                 if (!msgRes.isSuccessful) throw Exception("Failed to fetch msg ${messageIds[i]}")
-                val body = msgRes.body?.string() ?: ""
-                val map: Map<String, Any> = gson.fromJson(
-                    body,
-                    object : TypeToken<Map<String, Any>>() {}.type
-                )
+                val map: Map<String, Any> = gson.fromJson(msgRes.body?.string() ?: "", object : TypeToken<Map<String, Any>>() {}.type)
                 @Suppress("UNCHECKED_CAST")
                 val attachments = map["attachments"] as? List<Map<String, Any>>
-                val url = attachments?.firstOrNull()?.get("url") as? String
-                    ?: throw Exception("No attachment URL")
-
-                val chunkReq = Request.Builder().url(url).build()
-                val chunkRes = client.newCall(chunkReq).execute()
+                val url = attachments?.firstOrNull()?.get("url") as? String ?: throw Exception("No attachment URL")
+                val chunkRes = client.newCall(Request.Builder().url(url).build()).execute()
                 if (!chunkRes.isSuccessful) throw Exception("Failed to download chunk")
-
                 var chunkData = chunkRes.body?.bytes() ?: throw Exception("Empty chunk body")
-                
-                // [ENCRYPT] Decrypt chunk
                 chunkData = encryptionKey?.let { CryptoUtils.decrypt(chunkData, it) } ?: chunkData
-
                 out.write(chunkData)
                 onProgress((i + 1).toFloat() / messageIds.size)
             }

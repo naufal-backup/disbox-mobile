@@ -22,6 +22,9 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
     var api by mutableStateOf<DisboxApi?>(null)
     var allFiles by mutableStateOf<List<DisboxFile>>(emptyList())
     var currentPath by mutableStateOf("/")
+    var activePage by mutableStateOf("drive")
+    var isVerified by mutableStateOf(false)
+    
     var isLoading by mutableStateOf(false)
     var progressMap by mutableStateOf<Map<String, Float>>(emptyMap())
     var selectionSet by mutableStateOf<Set<String>>(emptySet())
@@ -33,6 +36,7 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
     var viewMode by mutableStateOf(prefs.getString("view_mode", "grid") ?: "grid")
     var zoomLevel by mutableStateOf(prefs.getFloat("zoom_level", 1f))
     var showPreviews by mutableStateOf(prefs.getBoolean("show_previews", true))
+    var showRecent by mutableStateOf(prefs.getBoolean("show_recent", true))
 
     var moveCopyMode by mutableStateOf<String?>(null)
     var moveCopyItems by mutableStateOf<Set<String>>(emptySet())
@@ -46,9 +50,17 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    fun setPage(page: String) {
+        if (activePage == "locked" && page != "locked") {
+            isVerified = false
+        }
+        activePage = page
+        if (page == "drive" || page == "locked") {
+            currentPath = "/"
+        }
+    }
+
     fun connect(url: String) {
-        // [FIX] Reset semua state UI sebelum load webhook baru
-        // Mencegah data lama dari webhook sebelumnya tampil saat ganti webhook
         pollJob?.cancel()
         isConnected = false
         allFiles = emptyList()
@@ -57,12 +69,12 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
         moveCopyMode = null
         moveCopyItems = emptySet()
         metadataStatus = "synced"
+        activePage = "drive"
+        isVerified = false
 
         webhookUrl = url
         prefs.edit().putString("webhook_url", url).apply()
 
-        // [FIX] Buat instance DisboxApi baru — lastSyncedId otomatis null
-        // Ini memastikan hash webhook baru di-resolve dan sync dari Discord
         val newApi = DisboxApi(getApplication(), url)
         newApi.chunkSize = chunkSize
         newApi.onStatusChange = { metadataStatus = it }
@@ -89,7 +101,7 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
         pollJob = viewModelScope.launch {
             while (isConnected) {
                 delay(30000)
-                if (metadataStatus == "synced") {
+                if (metadataStatus == "synced" || metadataStatus == "error") {
                     refresh(silent = true)
                 }
             }
@@ -109,6 +121,11 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
     fun updatePreviews(enabled: Boolean) {
         showPreviews = enabled
         prefs.edit().putBoolean("show_previews", enabled).apply()
+    }
+
+    fun updateRecent(enabled: Boolean) {
+        showRecent = enabled
+        prefs.edit().putBoolean("show_recent", enabled).apply()
     }
 
     fun setChunk(size: Int) {
@@ -134,6 +151,8 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
         webhookUrl = ""
         moveCopyMode = null
         moveCopyItems = emptySet()
+        activePage = "drive"
+        isVerified = false
     }
 
     fun refresh(silent: Boolean = false) {
@@ -160,7 +179,6 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun deletePaths(pathsOrIds: List<String>) {
-        // Optimistic UI
         allFiles = allFiles.filterNot { f ->
             pathsOrIds.contains(f.id) ||
             pathsOrIds.contains(f.path) ||
@@ -169,7 +187,6 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
         selectionSet = emptySet()
 
         viewModelScope.launch {
-            metadataStatus = "uploading"
             try {
                 api?.bulkDelete(pathsOrIds)
                 allFiles = api?.getFileSystem() ?: emptyList()
@@ -189,6 +206,53 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
             api?.renamePath(oldPath, newPath, id)
             allFiles = api?.getFileSystem() ?: emptyList()
             isLoading = false
+        }
+    }
+
+    fun toggleLock(idOrPath: String, isLocked: Boolean) {
+        toggleBulkStatus(setOf(idOrPath), isLocked = isLocked)
+    }
+
+    fun toggleStar(idOrPath: String, isStarred: Boolean) {
+        toggleBulkStatus(setOf(idOrPath), isStarred = isStarred)
+    }
+
+    fun toggleBulkStatus(idsOrPaths: Set<String>, isLocked: Boolean? = null, isStarred: Boolean? = null) {
+        viewModelScope.launch {
+            isLoading = true
+            api?.bulkSetStatus(idsOrPaths, isLocked, isStarred)
+            allFiles = api?.getFileSystem() ?: emptyList()
+            isLoading = false
+        }
+    }
+
+    fun setPin(pin: String, callback: (Boolean) -> Unit) {
+        viewModelScope.launch {
+            val ok = api?.setPin(pin) ?: false
+            callback(ok)
+        }
+    }
+
+    fun verifyPin(pin: String, callback: (Boolean) -> Unit) {
+        viewModelScope.launch {
+            val ok = api?.verifyPin(pin) ?: false
+            if (ok) isVerified = true
+            callback(ok)
+        }
+    }
+
+    fun checkHasPin(callback: (Boolean) -> Unit) {
+        viewModelScope.launch {
+            val ok = api?.hasPin() ?: false
+            callback(ok)
+        }
+    }
+
+    fun removePin(callback: (Boolean) -> Unit) {
+        viewModelScope.launch {
+            api?.removePin()
+            isVerified = false
+            callback(true)
         }
     }
 
@@ -276,6 +340,29 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
     fun cancelMoveCopy() {
         moveCopyMode = null
         moveCopyItems = emptySet()
+    }
+
+    fun unlockTo(idsOrPaths: Set<String>, destDir: String) {
+        viewModelScope.launch {
+            isLoading = true
+            try {
+                // 1. Move items first
+                val targetPath = if (destDir == "/") "" else destDir.trimStart('/')
+                idsOrPaths.forEach { idOrPath ->
+                    val file = allFiles.find { it.id == idOrPath || it.path == idOrPath }
+                    if (file != null) api?.movePath(file.path, targetPath, file.id)
+                    else api?.movePath(idOrPath, targetPath, null)
+                }
+                // 2. Then unlock them
+                api?.bulkSetStatus(idsOrPaths, isLocked = false)
+                allFiles = api?.getFileSystem() ?: emptyList()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            } finally {
+                selectionSet = emptySet()
+                isLoading = false
+            }
+        }
     }
 
     fun paste(destDir: String) {

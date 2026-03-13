@@ -12,14 +12,15 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 )
 data class FileEntity(
     val id: String,
-    // [FIX] Kolom hash wajib — digunakan untuk isolasi data per webhook
     val hash: String,
     val path: String,
     @ColumnInfo(name = "parent_path") val parentPath: String,
     val name: String,
     val size: Long,
     @ColumnInfo(name = "created_at") val createdAt: Long,
-    @ColumnInfo(name = "message_ids") val messageIds: String // JSON string
+    @ColumnInfo(name = "message_ids") val messageIds: String, // JSON string
+    @ColumnInfo(name = "is_locked", defaultValue = "0") val isLocked: Int = 0,
+    @ColumnInfo(name = "is_starred", defaultValue = "0") val isStarred: Int = 0
 )
 
 @Entity(tableName = "metadata_sync")
@@ -31,9 +32,18 @@ data class MetadataSyncEntity(
     @ColumnInfo(name = "updated_at") val updatedAt: Long
 )
 
+@Entity(
+    tableName = "settings",
+    primaryKeys = ["hash", "key"]
+)
+data class SettingsEntity(
+    val hash: String,
+    val key: String,
+    val value: String?
+)
+
 @Dao
 interface FileDao {
-    // [FIX] Semua query wajib filter by hash
     @Query("SELECT * FROM files WHERE hash = :hash")
     suspend fun getAllFilesByHash(hash: String): List<FileEntity>
 
@@ -52,7 +62,6 @@ interface FileDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(files: List<FileEntity>)
 
-    // [FIX] Hapus HANYA file milik hash tertentu — bukan semua file
     @Query("DELETE FROM files WHERE hash = :hash")
     suspend fun deleteAllByHash(hash: String)
 
@@ -64,6 +73,12 @@ interface FileDao {
 
     @Query("UPDATE files SET path = :newPath WHERE id = :id AND hash = :hash")
     suspend fun updatePath(id: String, newPath: String, hash: String)
+
+    @Query("UPDATE files SET is_locked = :isLocked WHERE id = :id AND hash = :hash")
+    suspend fun setLocked(id: String, hash: String, isLocked: Int)
+
+    @Query("UPDATE files SET is_starred = :isStarred WHERE id = :id AND hash = :hash")
+    suspend fun setStarred(id: String, hash: String, isStarred: Int)
 }
 
 @Dao
@@ -75,13 +90,21 @@ interface MetadataSyncDao {
     suspend fun insertOrReplace(metadata: MetadataSyncEntity)
 }
 
-// [FIX] Migration dari versi 1 (tanpa hash) ke versi 2 (dengan hash)
+@Dao
+interface SettingsDao {
+    @Query("SELECT * FROM settings WHERE hash = :hash AND key = :key")
+    suspend fun getSetting(hash: String, key: String): SettingsEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertOrReplace(setting: SettingsEntity)
+
+    @Query("DELETE FROM settings WHERE hash = :hash AND key = :key")
+    suspend fun deleteSetting(hash: String, key: String)
+}
+
 val MIGRATION_1_2 = object : Migration(1, 2) {
     override fun migrate(database: SupportSQLiteDatabase) {
-        // Simpan tabel lama
         database.execSQL("ALTER TABLE files RENAME TO files_old")
-
-        // Buat tabel baru dengan kolom hash dan composite primary key
         database.execSQL("""
             CREATE TABLE files (
                 id TEXT NOT NULL,
@@ -95,23 +118,39 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
                 PRIMARY KEY(id, hash)
             )
         """)
-
-        // Index untuk performa query
         database.execSQL("CREATE INDEX IF NOT EXISTS idx_hash ON files(hash)")
         database.execSQL("CREATE INDEX IF NOT EXISTS idx_path ON files(path, hash)")
         database.execSQL("CREATE INDEX IF NOT EXISTS idx_parent ON files(parent_path, hash)")
-
-        // Data lama tidak bisa di-migrate karena tidak ada info hash-nya
-        // App akan sync ulang dari Discord saat pertama connect
         database.execSQL("DROP TABLE files_old")
     }
 }
 
-// [FIX] Version naik ke 2
-@Database(entities = [FileEntity::class, MetadataSyncEntity::class], version = 2)
+val MIGRATION_2_3 = object : Migration(2, 3) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        // Add columns to files table
+        database.execSQL("ALTER TABLE files ADD COLUMN is_locked INTEGER NOT NULL DEFAULT 0")
+        database.execSQL("ALTER TABLE files ADD COLUMN is_starred INTEGER NOT NULL DEFAULT 0")
+        
+        // Create settings table
+        database.execSQL("""
+            CREATE TABLE IF NOT EXISTS settings (
+                hash TEXT NOT NULL,
+                key TEXT NOT NULL,
+                value TEXT,
+                PRIMARY KEY(hash, key)
+            )
+        """)
+    }
+}
+
+@Database(
+    entities = [FileEntity::class, MetadataSyncEntity::class, SettingsEntity::class],
+    version = 3
+)
 abstract class DisboxDatabase : RoomDatabase() {
     abstract fun fileDao(): FileDao
     abstract fun metadataSyncDao(): MetadataSyncDao
+    abstract fun settingsDao(): SettingsDao
 
     companion object {
         @Volatile
@@ -124,7 +163,7 @@ abstract class DisboxDatabase : RoomDatabase() {
                     DisboxDatabase::class.java,
                     "disbox.db"
                 )
-                    .addMigrations(MIGRATION_1_2) // [FIX] Daftarkan migration
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                     .build()
                 INSTANCE = instance
                 instance
