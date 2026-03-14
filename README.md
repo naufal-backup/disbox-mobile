@@ -53,6 +53,14 @@ Aplikasi ini dirancang untuk bekerja secara harmonis dengan **Disbox Desktop**.
 1.  Video/Audio Streaming Player (In-App)
 2.  Auto-Backup Folder Gallery/Documents
 
+## 💡 Terinspirasi
+
+https://github.com/DisboxApp/web
+
+## 💰 Support
+
+https://saweria.co/Naufal453
+
 ## 🤝 Kontribusi
 
 Kami menerima laporan bug dan saran fitur!
