@@ -13,6 +13,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.io.File
+import java.util.UUID
 
 class DisboxViewModel(application: Application) : AndroidViewModel(application) {
     private val prefs = application.getSharedPreferences("disbox_prefs", Context.MODE_PRIVATE)
@@ -50,7 +51,41 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
     var viewMode by mutableStateOf(prefs.getString("view_mode", "grid") ?: "grid")
     var zoomLevel by mutableStateOf(prefs.getFloat("zoom_level", 1f))
     var showPreviews by mutableStateOf(prefs.getBoolean("show_previews", true))
+    var showImagePreviews by mutableStateOf(prefs.getBoolean("show_image_previews", true))
+    var showVideoPreviews by mutableStateOf(prefs.getBoolean("show_video_previews", true))
     var showRecent by mutableStateOf(prefs.getBoolean("show_recent", true))
+    var cloudSaveEnabled by mutableStateOf(prefs.getBoolean("cloud_save_enabled", true))
+    var animationsEnabled by mutableStateOf(prefs.getBoolean("animations_enabled", true))
+
+    fun updatePreviews(show: Boolean) {
+        showPreviews = show
+        prefs.edit().putBoolean("show_previews", show).apply()
+    }
+
+    fun updateImagePreviews(show: Boolean) {
+        showImagePreviews = show
+        prefs.edit().putBoolean("show_image_previews", show).apply()
+    }
+
+    fun updateVideoPreviews(show: Boolean) {
+        showVideoPreviews = show
+        prefs.edit().putBoolean("show_video_previews", show).apply()
+    }
+
+    fun updateRecent(show: Boolean) {
+        showRecent = show
+        prefs.edit().putBoolean("show_recent", show).apply()
+    }
+
+    fun updateCloudSaveEnabled(enabled: Boolean) {
+        cloudSaveEnabled = enabled
+        prefs.edit().putBoolean("cloud_save_enabled", enabled).apply()
+    }
+
+    fun updateAnimationsEnabled(enabled: Boolean) {
+        animationsEnabled = enabled
+        prefs.edit().putBoolean("animations_enabled", enabled).apply()
+    }
 
     var moveCopyMode by mutableStateOf<String?>(null)
     var moveCopyItems by mutableStateOf<Set<String>>(emptySet())
@@ -97,8 +132,16 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
             isVerified = false
         }
         activePage = page
-        if (page == "drive" || page == "locked") {
+        if (page == "drive" || page == "locked" || page == "cloud-save") {
             currentPath = "/"
+        }
+        
+        // Refresh local file list with appropriate filtering
+        viewModelScope.launch {
+            allFiles = api?.getFileSystem(filterCloudSave = activePage != "cloud-save") ?: emptyList()
+            if (page == "cloud-save") {
+                refresh(silent = true)
+            }
         }
     }
 
@@ -160,16 +203,6 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
         prefs.edit().putFloat("zoom_level", level).apply()
     }
 
-    fun updatePreviews(enabled: Boolean) {
-        showPreviews = enabled
-        prefs.edit().putBoolean("show_previews", enabled).apply()
-    }
-
-    fun updateRecent(enabled: Boolean) {
-        showRecent = enabled
-        prefs.edit().putBoolean("show_recent", enabled).apply()
-    }
-
     fun setChunk(size: Int) {
         chunkSize = size
         api?.chunkSize = size
@@ -201,8 +234,59 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             if (!silent) isLoading = true
             api?.syncMetadata()
-            allFiles = api?.getFileSystem() ?: emptyList()
+            allFiles = api?.getFileSystem(filterCloudSave = activePage != "cloud-save") ?: emptyList()
             if (!silent) isLoading = false
+        }
+    }
+
+    fun exportCloudSaveAsZip(folderName: String, onComplete: (File?) -> Unit) {
+        viewModelScope.launch {
+            isLoading = true
+            try {
+                val disboxApi = api ?: return@launch
+                val prefix = "cloudsave/$folderName/"
+                val filesToExport = disboxApi.getFileSystem(filterCloudSave = false)
+                    .filter { it.path.startsWith(prefix) && !it.path.endsWith(".keep") }
+
+                if (filesToExport.isEmpty()) {
+                    onComplete(null)
+                    return@launch
+                }
+
+                val exportsDir = File(
+                    Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+                    "disbox_exports"
+                )
+                if (!exportsDir.exists()) exportsDir.mkdirs()
+
+                val zipFile = File(exportsDir, "${folderName}_export_${System.currentTimeMillis()}.zip")
+                val tempDir = File(getApplication<Application>().cacheDir, "export_${java.util.UUID.randomUUID()}")
+                if (!tempDir.exists()) tempDir.mkdirs()
+
+                java.util.zip.ZipOutputStream(zipFile.outputStream()).use { zos ->
+                    filesToExport.forEach { disboxFile ->
+                        val relativePath = disboxFile.path.removePrefix(prefix)
+                        val tempFile = File(tempDir, java.util.UUID.randomUUID().toString())
+                        
+                        disboxApi.downloadFile(disboxFile, tempFile) { p ->
+                            // Optional: track overall progress
+                        }
+
+                        val entry = java.util.zip.ZipEntry(relativePath)
+                        zos.putNextEntry(entry)
+                        tempFile.inputStream().use { it.copyTo(zos) }
+                        zos.closeEntry()
+                        tempFile.delete()
+                    }
+                }
+                tempDir.deleteRecursively()
+                onComplete(zipFile)
+            } catch (e: Exception) {
+                e.printStackTrace()
+                onComplete(null)
+            } finally {
+                isLoading = false
+            }
         }
     }
 
@@ -298,26 +382,32 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    fun uploadFile(uri: Uri) {
+    fun uploadFiles(uris: List<Uri>) {
         viewModelScope.launch {
             api?.let { disbox ->
-                val fileName = getFileName(uri)
-                val path = if (currentPath == "/") fileName
-                           else "${currentPath.trimStart('/')}/$fileName"
-                val notificationId = fileName.hashCode()
-                try {
-                    disbox.uploadFile(uri, path) { p ->
-                        progressMap = progressMap.toMutableMap().apply { put(fileName, p) }
-                        notificationHelper.showProgressNotification(notificationId, "Uploading $fileName", p, true)
+                uris.forEach { uri ->
+                    val fileName = getFileName(uri)
+                    val path = if (currentPath == "/") fileName
+                               else "${currentPath.trimStart('/')}/$fileName"
+                    val notificationId = fileName.hashCode()
+                    try {
+                        disbox.uploadFile(uri, path) { p ->
+                            progressMap = progressMap.toMutableMap().apply { put(fileName, p) }
+                            notificationHelper.showProgressNotification(notificationId, "Uploading $fileName", p, true)
+                        }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    } finally {
+                        progressMap = progressMap.toMutableMap().apply { remove(fileName) }
                     }
-                    allFiles = disbox.getFileSystem()
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                } finally {
-                    progressMap = progressMap.toMutableMap().apply { remove(fileName) }
                 }
+                allFiles = disbox.getFileSystem()
             }
         }
+    }
+
+    fun uploadFile(uri: Uri) {
+        uploadFiles(listOf(uri))
     }
 
     fun downloadFile(file: DisboxFile) {

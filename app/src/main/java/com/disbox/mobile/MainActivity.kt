@@ -1,6 +1,9 @@
 package com.disbox.mobile
 
 import android.Manifest
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -36,6 +39,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
@@ -44,12 +48,43 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.ContextCompat
+import androidx.media3.common.MediaItem
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.PlayerView
 import coil.compose.AsyncImage
+import coil.decode.VideoFrameDecoder
 import coil.request.ImageRequest
 import com.disbox.mobile.ui.theme.DisboxMobileTheme
 import java.io.File
 import java.util.UUID
+
+fun Context.findActivity(): Activity? {
+    var context = this
+    while (context is ContextWrapper) {
+        if (context is Activity) return context
+        context = context.baseContext
+    }
+    return null
+}
+
+@Composable
+fun VideoPlayer(exoPlayer: ExoPlayer, isFullscreen: Boolean = false) {
+    androidx.compose.ui.viewinterop.AndroidView(
+        factory = { ctx ->
+            PlayerView(ctx).apply {
+                player = exoPlayer
+                useController = true
+                resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
+                setBackgroundColor(android.graphics.Color.BLACK)
+                setPadding(0, 0, 0, 0)
+            }
+        },
+        modifier = Modifier.fillMaxSize()
+    )
+}
 
 class MainActivity : ComponentActivity() {
     private val viewModel: DisboxViewModel by viewModels()
@@ -109,19 +144,29 @@ fun isPdfFile(name: String): Boolean {
     return name.split(".").last().lowercase() == "pdf"
 }
 
+fun isVideoFile(name: String): Boolean {
+    val ext = name.split(".").last().lowercase()
+    return listOf("mp4", "mkv", "mov", "avi", "webm").contains(ext)
+}
+
 @Composable
 fun FileThumbnail(file: DisboxFile, viewModel: DisboxViewModel, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val name = file.path.split("/").last()
     val isImage = isImageFile(name)
+    val isVideo = isVideoFile(name)
     var thumbFile by remember { mutableStateOf<File?>(null) }
     var isLoading by remember { mutableStateOf(false) }
+
+    val isPreviewEnabled = viewModel.showPreviews && (
+        (isImage && viewModel.showImagePreviews) || (isVideo && viewModel.showVideoPreviews)
+    )
 
     val cacheKey = "thumb_${file.id}"
     val targetFile = File(context.cacheDir, cacheKey)
 
-    LaunchedEffect(file.id, viewModel.showPreviews) {
-        if (!viewModel.showPreviews || !isImage) {
+    LaunchedEffect(file.id, isPreviewEnabled) {
+        if (!isPreviewEnabled) {
             thumbFile = null
             return@LaunchedEffect
         }
@@ -144,12 +189,28 @@ fun FileThumbnail(file: DisboxFile, viewModel: DisboxViewModel, modifier: Modifi
 
     Box(modifier = modifier, contentAlignment = Alignment.Center) {
         if (thumbFile != null) {
-            AsyncImage(
-                model = ImageRequest.Builder(context).data(thumbFile).crossfade(true).build(),
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = androidx.compose.ui.layout.ContentScale.Crop
-            )
+            Box(contentAlignment = Alignment.Center) {
+                AsyncImage(
+                    model = ImageRequest.Builder(context)
+                        .data(thumbFile)
+                        .decoderFactory(VideoFrameDecoder.Factory())
+                        .crossfade(true)
+                        .build(),
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                )
+                if (isVideo) {
+                    Box(
+                        Modifier
+                            .size(20.dp)
+                            .background(Color.Black.copy(alpha = 0.5f), CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Default.PlayArrow, null, tint = Color.White, modifier = Modifier.size(14.dp))
+                    }
+                }
+            }
         } else if (isLoading) {
             CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
         } else {
@@ -218,11 +279,14 @@ fun BreadcrumbBar(currentPath: String, onNavigate: (String) -> Unit) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DisboxApp(viewModel: DisboxViewModel, onFinish: () -> Unit) {
-    val allTabIds = listOf("drive", "recent", "starred", "locked", "settings")
-    val allTabs = listOf(viewModel.t("drive"), viewModel.t("recent"), viewModel.t("starred"), viewModel.t("locked"), viewModel.t("settings"))
-    val allIcons = listOf(Icons.Default.Storage, Icons.Default.History, Icons.Default.Star, Icons.Default.Lock, Icons.Default.Settings)
+    val allTabIds = listOf("drive", "recent", "starred", "locked", "cloud-save", "settings")
+    val allTabs = listOf(viewModel.t("drive"), viewModel.t("recent"), viewModel.t("starred"), viewModel.t("locked"), viewModel.t("cloud_save"), viewModel.t("settings"))
+    val allIcons = listOf(Icons.Default.Storage, Icons.Default.History, Icons.Default.Star, Icons.Default.Lock, Icons.Default.Cloud, Icons.Default.Settings)
     
-    val filteredIndices = allTabIds.indices.filter { i -> allTabIds[i] != "recent" || viewModel.showRecent }
+    val filteredIndices = allTabIds.indices.filter { i -> 
+        val id = allTabIds[i]
+        (id != "recent" || viewModel.showRecent) && (id != "cloud-save" || viewModel.cloudSaveEnabled)
+    }
     val tabIds = filteredIndices.map { allTabIds[it] }
     val tabs = filteredIndices.map { allTabs[it] }
     val icons = filteredIndices.map { allIcons[it] }
@@ -255,7 +319,7 @@ fun DisboxApp(viewModel: DisboxViewModel, onFinish: () -> Unit) {
                         tabIds.forEachIndexed { index, id ->
                             NavigationBarItem(
                                 icon = { Icon(icons[index], contentDescription = tabs[index]) },
-                                label = { Text(tabs[index], fontSize = 10.sp) },
+                                label = { Text(tabs[index], fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                                 selected = viewModel.activePage == id,
                                 onClick = { viewModel.setPage(id) }
                             )
@@ -269,13 +333,112 @@ fun DisboxApp(viewModel: DisboxViewModel, onFinish: () -> Unit) {
                         "recent" -> DriveScreen(viewModel, isRecentView = true)
                         "starred" -> DriveScreen(viewModel, isStarredView = true)
                         "locked" -> if (viewModel.isVerified) DriveScreen(viewModel, isLockedView = true) else LockedGateway(viewModel)
+                        "cloud-save" -> CloudSaveScreen(viewModel)
                         "settings" -> SettingsScreen(viewModel)
                         else -> PlaceholderScreen(viewModel.activePage)
                     }
+                    
+                    if (viewModel.isLoading) {
+                        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.3f)), Alignment.Center) {
+                            CircularProgressIndicator(Modifier.size(48.dp))
+                        }
+                    }
+                    
                     if (viewModel.progressMap.isNotEmpty()) TransferPanel(viewModel.progressMap, viewModel)
                 }
             }
         }
+    }
+}
+
+@Composable
+fun CloudSaveScreen(viewModel: DisboxViewModel) {
+    val cloudSaveFolders = remember(viewModel.allFiles) {
+        viewModel.allFiles
+            .filter { it.path.startsWith("cloudsave/") }
+            .map { it.path.split("/")[1] }
+            .distinct()
+            .sorted()
+    }
+
+    var folderToExport by remember { mutableStateOf<String?>(null) }
+    var folderToDelete by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(Unit) {
+        viewModel.refresh()
+    }
+
+    Column(Modifier.fillMaxSize().padding(16.dp)) {
+        Text(viewModel.t("cloud_save"), fontSize = 24.sp, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(16.dp))
+        
+        if (cloudSaveFolders.isEmpty()) {
+            Box(Modifier.fillMaxSize(), Alignment.Center) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(Icons.Default.CloudOff, null, Modifier.size(64.dp), Color.Gray.copy(alpha = 0.5f))
+                    Spacer(Modifier.height(16.dp))
+                    Text(viewModel.t("no_cloud_saves"), color = Color.Gray)
+                }
+            }
+        } else {
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(cloudSaveFolders) { folder ->
+                    Card(
+                        Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                    ) {
+                        Row(
+                            Modifier.padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.Folder, null, tint = Color(0xFFF0A500))
+                            Spacer(Modifier.width(16.dp))
+                            Text(folder, Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
+                            IconButton(onClick = { folderToExport = folder }) {
+                                Icon(Icons.Default.Download, viewModel.t("export_zip"))
+                            }
+                            IconButton(onClick = { folderToDelete = folder }) {
+                                Icon(Icons.Default.Delete, viewModel.t("delete"), tint = MaterialTheme.colorScheme.error)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (folderToDelete != null) {
+        AlertDialog(
+            onDismissRequest = { folderToDelete = null },
+            title = { Text(viewModel.t("delete")) },
+            text = { Text("${viewModel.t("hapus_item", mapOf("count" to "1"))} ($folderToDelete)?") },
+            confirmButton = {
+                Button(onClick = {
+                    val name = folderToDelete!!
+                    viewModel.deletePaths(listOf("cloudsave/$name"))
+                    folderToDelete = null
+                }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) { Text(viewModel.t("confirm")) }
+            },
+            dismissButton = { TextButton(onClick = { folderToDelete = null }) { Text(viewModel.t("cancel")) } }
+        )
+    }
+
+    if (folderToExport != null) {
+        AlertDialog(
+            onDismissRequest = { folderToExport = null },
+            title = { Text(viewModel.t("export_zip")) },
+            text = { Text("${viewModel.t("exporting")} $folderToExport...") },
+            confirmButton = {
+                Button(onClick = {
+                    val name = folderToExport!!
+                    folderToExport = null
+                    viewModel.exportCloudSaveAsZip(name) { file: File? ->
+                        // In a real app, we might want to show a success dialog or open the file
+                    }
+                }) { Text(viewModel.t("confirm")) }
+            },
+            dismissButton = { TextButton(onClick = { folderToExport = null }) { Text(viewModel.t("cancel")) } }
+        )
     }
 }
 
@@ -287,33 +450,108 @@ fun LockedGateway(viewModel: DisboxViewModel) {
     var checking by remember { mutableStateOf(true) }
     LaunchedEffect(Unit) { viewModel.checkHasPin { hasPin = it; checking = false } }
     if (checking) return
-    Column(
-        modifier = Modifier.fillMaxSize().padding(32.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Icon(Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.primary)
-        Spacer(Modifier.height(24.dp))
-        if (!hasPin) {
-            Text(viewModel.t("pin_not_set"), fontSize = 20.sp, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.height(8.dp))
-            Text(viewModel.t("pin_not_set_desc"), textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
-            Spacer(Modifier.height(24.dp))
-            Button(onClick = { viewModel.setPage("settings") }) { Text(viewModel.t("settings")) }
-        } else {
-            Text(viewModel.t("locked_area"), fontSize = 20.sp, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.height(8.dp))
-            Text(viewModel.t("locked_area_desc"), textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
-            Spacer(Modifier.height(32.dp))
-            OutlinedTextField(
-                value = pin, onValueChange = { pin = it },
-                label = { Text("PIN") }, visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
-                modifier = Modifier.width(200.dp), textStyle = androidx.compose.ui.text.TextStyle(textAlign = androidx.compose.ui.text.style.TextAlign.Center, fontSize = 24.sp),
-                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.NumberPassword)
-            )
-            if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
-            Spacer(Modifier.height(24.dp))
-            Button(onClick = { viewModel.verifyPin(pin) { if (!it) { error = viewModel.t("pin_error_wrong"); pin = "" } } }, enabled = pin.length >= 4, modifier = Modifier.fillMaxWidth().height(56.dp)) { Text(viewModel.t("unlock_access")) }
+    
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth(0.85f)
+                .padding(16.dp),
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)),
+            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(32.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Icon(
+                    Icons.Default.Lock, 
+                    contentDescription = null, 
+                    modifier = Modifier.size(64.dp), 
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                Spacer(Modifier.height(24.dp))
+                
+                if (!hasPin) {
+                    Text(viewModel.t("pin_not_set"), fontSize = 20.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        viewModel.t("pin_not_set_desc"), 
+                        textAlign = TextAlign.Center, 
+                        fontSize = 14.sp,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                    )
+                    Spacer(Modifier.height(32.dp))
+                    Button(
+                        onClick = { viewModel.setPage("settings") },
+                        modifier = Modifier.fillMaxWidth().height(56.dp),
+                        shape = RoundedCornerShape(16.dp)
+                    ) { 
+                        Text(viewModel.t("settings"), fontWeight = FontWeight.Bold) 
+                    }
+                } else {
+                    Text(viewModel.t("locked_area"), fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, textAlign = TextAlign.Center)
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        viewModel.t("locked_area_desc"), 
+                        textAlign = TextAlign.Center, 
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                    )
+                    Spacer(Modifier.height(32.dp))
+                    
+                    OutlinedTextField(
+                        value = pin, 
+                        onValueChange = { if (it.length <= 8) pin = it },
+                        label = { Text("Master PIN") }, 
+                        visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                        modifier = Modifier.fillMaxWidth(), 
+                        shape = RoundedCornerShape(16.dp),
+                        textStyle = androidx.compose.ui.text.TextStyle(
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center, 
+                            fontSize = 24.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 8.sp
+                        ),
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                            keyboardType = androidx.compose.ui.text.input.KeyboardType.NumberPassword
+                        ),
+                        singleLine = true
+                    )
+                    
+                    if (error.isNotEmpty()) {
+                        Text(
+                            error, 
+                            color = MaterialTheme.colorScheme.error, 
+                            fontSize = 12.sp, 
+                            modifier = Modifier.padding(top = 12.dp),
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                    
+                    Spacer(Modifier.height(32.dp))
+                    
+                    Button(
+                        onClick = { 
+                            viewModel.verifyPin(pin) { 
+                                if (!it) { 
+                                    error = viewModel.t("pin_error_wrong")
+                                    pin = "" 
+                                } 
+                            } 
+                        }, 
+                        enabled = pin.length >= 4, 
+                        modifier = Modifier.fillMaxWidth().height(56.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp)
+                    ) { 
+                        Icon(Icons.Default.Key, null, Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text(viewModel.t("unlock_access"), fontWeight = FontWeight.Bold) 
+                    }
+                }
+            }
         }
     }
 }
@@ -411,10 +649,11 @@ fun FolderSelectionDialog(
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun DriveScreen(viewModel: DisboxViewModel, isLockedView: Boolean = false, isStarredView: Boolean = false, isRecentView: Boolean = false) {
-    val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { it?.let { viewModel.uploadFile(it) } }
+    val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
+        if (uris.isNotEmpty()) viewModel.uploadFiles(uris)
+    }
     var showCreateFolderDialog by remember { mutableStateOf(false) }
     var folderName by remember { mutableStateOf("") }
     var previewFile by remember { mutableStateOf<DisboxFile?>(null) }
@@ -428,7 +667,7 @@ fun DriveScreen(viewModel: DisboxViewModel, isLockedView: Boolean = false, isSta
 
     val processed = remember(viewModel.allFiles, viewModel.currentPath, isLockedView, isStarredView, isRecentView, viewModel.sortMode) {
         val fileList = mutableListOf<DisboxFile>(); val folderList = mutableListOf<Pair<String, String>>()
-        val dirPath = if (viewModel.currentPath == "/") "" else viewModel.currentPath.trim('/')
+        val dirPath = viewModel.currentPath.trim('/')
         val folderLockStatus = mutableMapOf<String, Pair<Int, Int>>()
         viewModel.allFiles.forEach { f ->
             val parts = f.path.split("/").filter { it.isNotEmpty() }; var temp = ""
@@ -492,7 +731,7 @@ fun DriveScreen(viewModel: DisboxViewModel, isLockedView: Boolean = false, isSta
         topBar = {
             Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface)) {
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp, top = 2.dp, bottom = 2.dp),
+                    modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp, top = 4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Box(modifier = Modifier.weight(1f)) {
@@ -508,97 +747,98 @@ fun DriveScreen(viewModel: DisboxViewModel, isLockedView: Boolean = false, isSta
                     }
                     
                     if (viewModel.selectionSet.isNotEmpty()) {
-                        val selectedItems = viewModel.allFiles.filter { f ->
+                        val selectedItems = viewModel.allFiles.filter { f: DisboxFile ->
                             viewModel.selectionSet.contains(f.id) || 
                             viewModel.selectionSet.contains(f.path) || 
                             (f.path.endsWith("/.keep") && viewModel.selectionSet.contains(f.path.removeSuffix("/.keep"))) ||
                             (f.path == ".keep" && viewModel.selectionSet.contains(""))
                         }
+                        val isSingleSelect = viewModel.selectionSet.size == 1
+                        val firstFile = selectedItems.find { !it.path.endsWith(".keep") }
+                        
                         val allStarred = selectedItems.isNotEmpty() && selectedItems.all { it.isStarred }
                         val allLocked = selectedItems.isNotEmpty() && selectedItems.all { it.isLocked }
 
-                        if (!isLockedView) {
-                            IconButton(onClick = { viewModel.toggleBulkStatus(viewModel.selectionSet, isStarred = !allStarred) }) {
-                                Icon(if (allStarred) Icons.Default.StarBorder else Icons.Default.Star, "Toggle Star massal")
+                        // Single select actions: Rename & Download
+                        if (isSingleSelect) {
+                            if (firstFile != null) {
+                                IconButton(onClick = { viewModel.downloadFile(firstFile) }) {
+                                    Icon(Icons.Default.Download, null)
+                                }
+                            }
+                            IconButton(onClick = { 
+                                val item = selectedItems.firstOrNull()
+                                if (item != null) {
+                                    itemToRename = if (item.path.endsWith(".keep")) {
+                                        val folderPath = item.path.removeSuffix("/.keep")
+                                        folderPath.split("/").last() to folderPath
+                                    } else {
+                                        item.path.split("/").last() to item.id
+                                    }
+                                    newName = itemToRename!!.first
+                                    showRenameDialog = true
+                                }
+                            }) {
+                                Icon(Icons.Default.Edit, null)
                             }
                         }
 
-                        if (isLockedView) {
-                            IconButton(onClick = { showFolderPickerForUnlock = true }) {
-                                Icon(Icons.Default.LockOpen, "Unlock massal ke folder...")
-                            }
-                        } else {
-                            IconButton(onClick = { viewModel.toggleBulkStatus(viewModel.selectionSet, isLocked = !allLocked) }) {
-                                Icon(if (allLocked) Icons.Default.LockOpen else Icons.Default.Lock, "Toggle Lock massal")
-                            }
+                        IconButton(onClick = { viewModel.toggleBulkStatus(viewModel.selectionSet, isStarred = !allStarred) }) {
+                            Icon(if (allStarred) Icons.Default.StarBorder else Icons.Default.Star, null)
                         }
-
-                        IconButton(onClick = { viewModel.startMove(viewModel.selectionSet) }) { 
-                            Icon(Icons.Default.DriveFileMove, "Move massal") 
+                        IconButton(onClick = { if (isLockedView) showFolderPickerForUnlock = true else viewModel.toggleBulkStatus(viewModel.selectionSet, isLocked = !allLocked) }) {
+                            Icon(if (isLockedView) Icons.Default.LockOpen else if (allLocked) Icons.Default.LockOpen else Icons.Default.Lock, null)
                         }
-                        IconButton(onClick = { viewModel.startCopy(viewModel.selectionSet) }) { 
-                            Icon(Icons.Default.ContentCopy, "Copy massal") 
-                        }
-                        IconButton(onClick = { showDeleteConfirm = viewModel.selectionSet.toList() }) { 
-                            Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) 
-                        }
-                        IconButton(onClick = { viewModel.clearSelection() }) { 
-                            Icon(Icons.Default.Close, contentDescription = null) 
-                        }
+                        IconButton(onClick = { viewModel.startMove(viewModel.selectionSet) }) { Icon(Icons.Default.DriveFileMove, null) }
+                        IconButton(onClick = { viewModel.startCopy(viewModel.selectionSet) }) { Icon(Icons.Default.ContentCopy, null) }
+                        IconButton(onClick = { showDeleteConfirm = viewModel.selectionSet.toList() }) { Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error) }
+                        IconButton(onClick = { viewModel.clearSelection() }) { Icon(Icons.Default.Close, null) }
                     } else {
-                        if (viewModel.activePage != "settings") {
-                            MetadataStatusIndicator(viewModel.metadataStatus, viewModel)
-                        }
-                        
-                        Box(contentAlignment = Alignment.Center) {
-                            IconButton(onClick = { showSortMenu = true }) {
-                                Icon(Icons.Default.Sort, contentDescription = "Sort")
-                            }
-                            DropdownMenu(
-                                expanded = showSortMenu,
-                                onDismissRequest = { showSortMenu = false },
-                                modifier = Modifier.background(MaterialTheme.colorScheme.surface)
-                            ) {
-                                DropdownMenuItem(
-                                    text = { Text(viewModel.t("sort_name")) },
-                                    onClick = { viewModel.updateSortMode("name"); showSortMenu = false },
-                                    leadingIcon = { if (viewModel.sortMode == "name") Icon(Icons.Default.Check, null) }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text(viewModel.t("sort_date")) },
-                                    onClick = { viewModel.updateSortMode("date"); showSortMenu = false },
-                                    leadingIcon = { if (viewModel.sortMode == "date") Icon(Icons.Default.Check, null) }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text(viewModel.t("sort_size")) },
-                                    onClick = { viewModel.updateSortMode("size"); showSortMenu = false },
-                                    leadingIcon = { if (viewModel.sortMode == "size") Icon(Icons.Default.Check, null) }
-                                )
-                            }
-                        }
-
+                        MetadataStatusIndicator(viewModel.metadataStatus, viewModel)
                         IconButton(onClick = { viewModel.setView(if (viewModel.viewMode == "grid") "list" else "grid") }) { 
-                            Icon(if (viewModel.viewMode == "grid") Icons.Default.List else Icons.Default.GridView, contentDescription = null) 
+                            Icon(if (viewModel.viewMode == "grid") Icons.Default.List else Icons.Default.GridView, null) 
                         }
-                        IconButton(onClick = { viewModel.refresh() }) { 
-                            Icon(Icons.Default.Refresh, contentDescription = null) 
-                        }
+                        IconButton(onClick = { viewModel.refresh() }) { Icon(Icons.Default.Refresh, null) }
                     }
                 }
                 
-                Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Spacer(Modifier.weight(1f))
-                    Icon(Icons.Default.ZoomIn, null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(Modifier.width(8.dp))
-                    Slider(
-                        value = viewModel.zoomLevel,
-                        onValueChange = { viewModel.setZoom(it) },
-                        valueRange = 0.6f..1.5f,
-                        modifier = Modifier.width(100.dp).height(32.dp)
-                    )
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    // Inline Sort Options
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f).horizontalScroll(rememberScrollState())) {
+                        listOf("name" to Icons.Default.SortByAlpha, "date" to Icons.Default.Schedule, "size" to Icons.Default.Scale).forEach { (mode, icon) ->
+                            val isSelected = viewModel.sortMode == mode
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = { viewModel.updateSortMode(mode) },
+                                label = { Text(viewModel.t("sort_$mode"), fontSize = 10.sp) },
+                                leadingIcon = { Icon(icon, null, Modifier.size(14.dp)) },
+                                modifier = Modifier.padding(end = 4.dp),
+                                shape = RoundedCornerShape(8.dp)
+                            )
+                        }
+                    }
+                    
+                    Spacer(Modifier.width(16.dp))
+                    
+                    // Zoom Slider
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.ZoomIn, null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Spacer(Modifier.width(8.dp))
+                        Box(Modifier.width(100.dp), contentAlignment = Alignment.Center) {
+                            Slider(
+                                value = viewModel.zoomLevel,
+                                onValueChange = { viewModel.setZoom(it) },
+                                valueRange = 0.6f..1.5f,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    }
                 }
-                
-                HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
             }
         },
         floatingActionButton = {
@@ -620,18 +860,30 @@ fun DriveScreen(viewModel: DisboxViewModel, isLockedView: Boolean = false, isSta
             } else if (viewModel.viewMode == "grid") {
                 LazyVerticalGrid(columns = GridCells.Adaptive(minSize = (100.dp * viewModel.zoomLevel)), contentPadding = PaddingValues(12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(folders) { (name, path) -> FolderItemGrid(name, path, viewModel) {
-                        val status = viewModel.allFiles.filter { it.path.startsWith("$path/") }; val isLocked = status.isNotEmpty() && status.all { it.isLocked }
-                        if (isLocked && !viewModel.isVerified) pinPrompt = { viewModel.navigate("/$path") } else viewModel.navigate("/$path")
+                        if (viewModel.selectionSet.isNotEmpty()) viewModel.toggleSelection(path)
+                        else {
+                            val status = viewModel.allFiles.filter { it.path.startsWith("$path/") }; val isLocked = status.isNotEmpty() && status.all { it.isLocked }
+                            if (isLocked && !viewModel.isVerified) pinPrompt = { viewModel.navigate("/$path") } else viewModel.navigate("/$path")
+                        }
                     } }
-                    items(currentFiles) { f -> FileItemGrid(f, viewModel) { if (f.isLocked && !viewModel.isVerified) pinPrompt = { previewFile = f } else previewFile = f } }
+                    items(currentFiles) { f -> FileItemGrid(f, viewModel) { 
+                        if (viewModel.selectionSet.isNotEmpty()) viewModel.toggleSelection(f.id)
+                        else if (f.isLocked && !viewModel.isVerified) pinPrompt = { previewFile = f } else previewFile = f 
+                    } }
                 }
             } else {
                 LazyColumn(contentPadding = PaddingValues(bottom = 80.dp)) {
                     items(folders) { (name, path) -> FolderItemList(name, path, viewModel) {
-                        val status = viewModel.allFiles.filter { it.path.startsWith("$path/") }; val isLocked = status.isNotEmpty() && status.all { it.isLocked }
-                        if (isLocked && !viewModel.isVerified) pinPrompt = { viewModel.navigate("/$path") } else viewModel.navigate("/$path")
+                        if (viewModel.selectionSet.isNotEmpty()) viewModel.toggleSelection(path)
+                        else {
+                            val status = viewModel.allFiles.filter { it.path.startsWith("$path/") }; val isLocked = status.isNotEmpty() && status.all { it.isLocked }
+                            if (isLocked && !viewModel.isVerified) pinPrompt = { viewModel.navigate("/$path") } else viewModel.navigate("/$path")
+                        }
                     } }
-                    items(currentFiles) { f -> FileItemList(f, viewModel) { if (f.isLocked && !viewModel.isVerified) pinPrompt = { previewFile = f } else previewFile = f } }
+                    items(currentFiles) { f -> FileItemList(f, viewModel) { 
+                        if (viewModel.selectionSet.isNotEmpty()) viewModel.toggleSelection(f.id)
+                        else if (f.isLocked && !viewModel.isVerified) pinPrompt = { previewFile = f } else previewFile = f 
+                    } }
                 }
             }
             if (pinPrompt != null) PinPromptModal(viewModel.t("locked_area"), { val a = pinPrompt; pinPrompt = null; a?.invoke() }, { pinPrompt = null }, viewModel)
@@ -659,6 +911,24 @@ fun DriveScreen(viewModel: DisboxViewModel, isLockedView: Boolean = false, isSta
             confirmButton = { Button(onClick = { viewModel.deletePaths(showDeleteConfirm!!); showDeleteConfirm = null }, colors = ButtonDefaults.buttonColors(MaterialTheme.colorScheme.error)) { Text(viewModel.t("confirm")) } },
             dismissButton = { TextButton(onClick = { showDeleteConfirm = null }) { Text(viewModel.t("cancel")) } })
     }
+    if (showRenameDialog && itemToRename != null) {
+        AlertDialog(
+            onDismissRequest = { showRenameDialog = false },
+            title = { Text(viewModel.t("rename")) },
+            text = { OutlinedTextField(newName, { newName = it }, label = { Text(viewModel.t("folder_name_placeholder")) }) },
+            confirmButton = {
+                Button(onClick = {
+                    if (newName.isNotBlank() && newName != itemToRename!!.first) {
+                        val target = itemToRename!!.second!!
+                        val isId = target.contains("-") && target.length > 30
+                        viewModel.renamePath(target, newName, if (isId) target else null)
+                    }
+                    showRenameDialog = false
+                }) { Text(viewModel.t("save")) }
+            },
+            dismissButton = { TextButton(onClick = { showRenameDialog = false }) { Text(viewModel.t("cancel")) } }
+        )
+    }
     if (previewFile != null) FilePreviewScreen(previewFile!!, viewModel) { previewFile = null }
 }
 
@@ -667,9 +937,23 @@ fun DriveScreen(viewModel: DisboxViewModel, isLockedView: Boolean = false, isSta
 fun FilePreviewScreen(file: DisboxFile, viewModel: DisboxViewModel, onClose: () -> Unit) {
     val name = file.path.split("/").last(); val context = LocalContext.current; var previewText by remember { mutableStateOf<String?>(null) }
     var previewImageFile by remember { mutableStateOf<File?>(null) }; var previewPdfFile by remember { mutableStateOf<File?>(null) }
+    var previewVideoFile by remember { mutableStateOf<File?>(null) }
     var isDownloadingPreview by remember { mutableStateOf(false) }; var errorMsg by remember { mutableStateOf<String?>(null) }
+    var isFullscreen by remember { mutableStateOf(false) }
     val textExts = listOf("txt", "md", "json", "js", "py", "rs", "html", "css", "xml", "yml", "yaml", "sql", "sh", "env")
+    val videoExts = listOf("mp4", "mkv", "mov", "avi", "webm")
     val ext = name.split(".").last().lowercase()
+
+    val exoPlayer = remember {
+        ExoPlayer.Builder(context).build()
+    }
+
+    DisposableEffect(exoPlayer) {
+        onDispose {
+            exoPlayer.release()
+        }
+    }
+    
     LaunchedEffect(file) {
         isDownloadingPreview = true; errorMsg = null
         try {
@@ -677,17 +961,30 @@ fun FilePreviewScreen(file: DisboxFile, viewModel: DisboxViewModel, onClose: () 
             when {
                 isImageFile(name) -> { viewModel.api?.downloadFile(file, tempFile) { }; previewImageFile = tempFile }
                 isPdfFile(name) -> { viewModel.api?.downloadFile(file, tempFile) { }; previewPdfFile = tempFile }
+                videoExts.contains(ext) -> { 
+                    viewModel.api?.downloadFile(file, tempFile) { }
+                    previewVideoFile = tempFile
+                    val mediaItem = MediaItem.fromUri(Uri.fromFile(tempFile))
+                    exoPlayer.setMediaItem(mediaItem)
+                    exoPlayer.prepare()
+                    exoPlayer.playWhenReady = true
+                }
                 textExts.contains(ext) -> { viewModel.api?.downloadFile(file, tempFile) { }; previewText = tempFile.readText() }
             }
         } catch (e: Exception) { errorMsg = "Gagal memuat: ${e.message}" } finally { isDownloadingPreview = false }
     }
-    LaunchedEffect(previewPdfFile) {
-        previewPdfFile?.let {
-            val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.provider", it)
-            context.startActivity(Intent(Intent.ACTION_VIEW).apply { setDataAndType(uri, "application/pdf"); addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK) })
-            onClose()
+
+    if (isFullscreen && previewVideoFile != null) {
+        Dialog(onDismissRequest = { isFullscreen = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+            Box(Modifier.fillMaxSize().background(Color.Black), Alignment.Center) {
+                VideoPlayer(exoPlayer, isFullscreen = true)
+                IconButton(onClick = { isFullscreen = false }, modifier = Modifier.align(Alignment.TopEnd).padding(16.dp)) {
+                    Icon(Icons.Default.Close, null, tint = Color.White)
+                }
+            }
         }
     }
+
     ModalBottomSheet(onDismissRequest = onClose, dragHandle = null) {
         Column(Modifier.fillMaxWidth().fillMaxHeight(0.9f).padding(24.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -697,11 +994,33 @@ fun FilePreviewScreen(file: DisboxFile, viewModel: DisboxViewModel, onClose: () 
             }
             Spacer(Modifier.height(16.dp))
             Box(Modifier.fillMaxSize().clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.background), Alignment.Center) {
-                if (isDownloadingPreview) CircularProgressIndicator()
+                if (isDownloadingPreview) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        CircularProgressIndicator()
+                        Spacer(Modifier.height(16.dp))
+                        Text(viewModel.t("downloading_preview"), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface.copy(0.6f))
+                    }
+                }
                 else if (errorMsg != null) Text(errorMsg!!, color = MaterialTheme.colorScheme.error)
                 else if (previewImageFile != null) AsyncImage(ImageRequest.Builder(context).data(previewImageFile).build(), contentDescription = null, modifier = Modifier.fillMaxSize())
+                else if (previewVideoFile != null) {
+                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                        if (!isFullscreen) {
+                            VideoPlayer(exoPlayer)
+                            IconButton(
+                                onClick = { isFullscreen = true }, 
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .padding(8.dp)
+                                    .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                            ) {
+                                Icon(Icons.Default.Fullscreen, null, tint = Color.White)
+                            }
+                        }
+                    }
+                }
                 else if (previewText != null) Box(Modifier.verticalScroll(rememberScrollState()).padding(16.dp)) { Text(previewText!!, fontFamily = FontFamily.Monospace, fontSize = 12.sp) }
-                else Column(horizontalAlignment = Alignment.CenterHorizontally) { Text(getFileIcon(name), fontSize = 64.sp); Text(viewModel.t("empty_folder"), color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)) }
+                else Column(horizontalAlignment = Alignment.CenterHorizontally) { Text(getFileIcon(name), fontSize = 64.sp); Text(viewModel.t("no_preview"), color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)) }
             }
         }
     }
@@ -713,76 +1032,20 @@ fun FolderItemGrid(name: String, path: String, viewModel: DisboxViewModel, onCli
     val isSelected = viewModel.selectionSet.contains(path); val status = viewModel.allFiles.filter { it.path.startsWith("$path/") }
     val isLocked = status.isNotEmpty() && status.all { it.isLocked }; val isStarred = viewModel.allFiles.any { it.path == "$path/.keep" && it.isStarred }
     
-    var showRenameDialog by remember { mutableStateOf(false) }
-    var newFolderName by remember { mutableStateOf(name) }
-
     Box(Modifier.fillMaxWidth()) {
-        GridFileItem(null, name, true, 0, isSelected, viewModel.selectionSet.isNotEmpty(), isLocked, isStarred, viewModel.zoomLevel, viewModel, { viewModel.toggleSelection(path) }, { if (viewModel.selectionSet.isNotEmpty()) viewModel.toggleSelection(path) else onClick() })
-        var showMenu by remember { mutableStateOf(false) }
-        Box(Modifier.align(Alignment.TopStart).combinedClickable(onClick={}, onLongClick={showMenu=true}).size(40.dp))
-        Box {
-            DropdownMenu(expanded = showMenu, onDismissRequest = {showMenu=false}) {
-                val targets = if (viewModel.selectionSet.contains(path)) viewModel.selectionSet else setOf(path)
-                val isBulk = targets.size > 1
-
-                DropdownMenuItem(
-                    text = { Text(if (isBulk) "Rename (N/A)" else viewModel.t("rename")) },
-                    enabled = !isBulk,
-                    onClick = { showRenameDialog = true; showMenu = false },
-                    leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) }
-                )
-                DropdownMenuItem(
-                    text = { Text(if (isBulk) viewModel.t("pindah_item", mapOf("count" to targets.size.toString())) else viewModel.t("move")) },
-                    onClick = { viewModel.startMove(targets); showMenu = false },
-                    leadingIcon = { Icon(Icons.Default.DriveFileMove, contentDescription = null) }
-                )
-                DropdownMenuItem(
-                    text = { Text(if (isBulk) viewModel.t("salin_item", mapOf("count" to targets.size.toString())) else viewModel.t("copy")) },
-                    onClick = { viewModel.startCopy(targets); showMenu = false },
-                    leadingIcon = { Icon(Icons.Default.ContentCopy, contentDescription = null) }
-                )
-                DropdownMenuItem(
-                    text = { Text(if (isBulk) "Lock/Unlock" else if(isLocked) viewModel.t("unlock") else viewModel.t("lock")) },
-                    onClick = { 
-                        viewModel.toggleBulkStatus(targets, isLocked = !isLocked)
-                        showMenu = false 
-                    },
-                    leadingIcon = { Icon(if(isLocked) Icons.Default.LockOpen else Icons.Default.Lock, contentDescription = null) }
-                )
-                DropdownMenuItem(
-                    text = { Text(if (isBulk) "Star/Unstar" else if(isStarred) viewModel.t("unstar") else viewModel.t("star")) },
-                    onClick = { 
-                        viewModel.toggleBulkStatus(targets, isStarred = !isStarred)
-                        showMenu = false 
-                    },
-                    leadingIcon = { Icon(if(isStarred) Icons.Default.StarBorder else Icons.Default.Star, contentDescription = null) }
-                )
-                DropdownMenuItem(
-                    text = { Text(if (isBulk) viewModel.t("hapus_item", mapOf("count" to targets.size.toString())) else viewModel.t("delete"), color=MaterialTheme.colorScheme.error) },
-                    onClick = { 
-                        viewModel.deletePaths(targets.toList())
-                        showMenu = false 
-                    },
-                    leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, tint=MaterialTheme.colorScheme.error) }
-                )
-            }
-        }
-    }
-
-    if (showRenameDialog) {
-        AlertDialog(
-            onDismissRequest = { showRenameDialog = false },
-            title = { Text(viewModel.t("rename")) },
-            text = { OutlinedTextField(newFolderName, { newFolderName = it }, label = { Text(viewModel.t("folder_name_placeholder")) }) },
-            confirmButton = {
-                Button(onClick = {
-                    if (newFolderName.isNotBlank() && newFolderName != name) {
-                        viewModel.renamePath(path, newFolderName, null)
-                    }
-                    showRenameDialog = false
-                }) { Text(viewModel.t("save")) }
-            },
-            dismissButton = { TextButton(onClick = { showRenameDialog = false }) { Text(viewModel.t("cancel")) } }
+        GridFileItem(
+            file = null, 
+            name = name, 
+            isFolder = true, 
+            size = 0, 
+            isSelected = isSelected, 
+            isSelectionMode = viewModel.selectionSet.isNotEmpty(), 
+            isLocked = isLocked, 
+            isStarred = isStarred, 
+            zoom = viewModel.zoomLevel, 
+            viewModel = viewModel, 
+            onLongClick = { viewModel.toggleSelection(path) }, 
+            onClick = onClick
         )
     }
 }
@@ -791,84 +1054,21 @@ fun FolderItemGrid(name: String, path: String, viewModel: DisboxViewModel, onCli
 @Composable
 fun FileItemGrid(file: DisboxFile, viewModel: DisboxViewModel, onClick: () -> Unit) {
     val isSelected = viewModel.selectionSet.contains(file.id); val name = file.path.split("/").last()
-    var showRenameDialog by remember { mutableStateOf(false) }
-    var newName by remember { mutableStateOf(name) }
 
     Box(Modifier.fillMaxWidth()) {
-        GridFileItem(file, name, false, file.size, isSelected, viewModel.selectionSet.isNotEmpty(), file.isLocked, file.isStarred, viewModel.zoomLevel, viewModel, {viewModel.toggleSelection(file.id)}, { if(viewModel.selectionSet.isNotEmpty()) viewModel.toggleSelection(file.id) else onClick() })
-        var showMenu by remember { mutableStateOf(false) }
-        Box(Modifier.align(Alignment.TopStart).combinedClickable(onClick={}, onLongClick={showMenu=true}).size(40.dp))
-        Box {
-            DropdownMenu(expanded = showMenu, onDismissRequest = {showMenu=false}) {
-                val targets = if (viewModel.selectionSet.contains(file.id)) viewModel.selectionSet else setOf(file.id)
-                val isBulk = targets.size > 1
-
-                DropdownMenuItem(
-                    text = { Text(viewModel.t("download")) },
-                    onClick = { viewModel.downloadFile(file); showMenu = false },
-                    leadingIcon = { Icon(Icons.Default.Download, contentDescription = null) }
-                )
-                DropdownMenuItem(
-                    text = { Text(if (isBulk) "Rename (N/A)" else viewModel.t("rename")) },
-                    enabled = !isBulk,
-                    onClick = { 
-                        showRenameDialog = true
-                        showMenu = false 
-                    },
-                    leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) }
-                )
-                DropdownMenuItem(
-                    text = { Text(if (isBulk) viewModel.t("pindah_item", mapOf("count" to targets.size.toString())) else viewModel.t("move")) },
-                    onClick = { viewModel.startMove(targets); showMenu = false },
-                    leadingIcon = { Icon(Icons.Default.DriveFileMove, contentDescription = null) }
-                )
-                DropdownMenuItem(
-                    text = { Text(if (isBulk) viewModel.t("salin_item", mapOf("count" to targets.size.toString())) else viewModel.t("copy")) },
-                    onClick = { viewModel.startCopy(targets); showMenu = false },
-                    leadingIcon = { Icon(Icons.Default.ContentCopy, contentDescription = null) }
-                )
-                DropdownMenuItem(
-                    text = { Text(if (isBulk) "Lock/Unlock" else if(file.isLocked) viewModel.t("unlock") else viewModel.t("lock")) },
-                    onClick = { 
-                        viewModel.toggleBulkStatus(targets, isLocked = !file.isLocked)
-                        showMenu = false 
-                    },
-                    leadingIcon = { Icon(if(file.isLocked) Icons.Default.LockOpen else Icons.Default.Lock, contentDescription = null) }
-                )
-                DropdownMenuItem(
-                    text = { Text(if (isBulk) "Star/Unstar" else if(file.isStarred) viewModel.t("unstar") else viewModel.t("star")) },
-                    onClick = { 
-                        viewModel.toggleBulkStatus(targets, isStarred = !file.isStarred)
-                        showMenu = false 
-                    },
-                    leadingIcon = { Icon(if(file.isStarred) Icons.Default.StarBorder else Icons.Default.Star, contentDescription = null) }
-                )
-                DropdownMenuItem(
-                    text = { Text(if (isBulk) viewModel.t("hapus_item", mapOf("count" to targets.size.toString())) else viewModel.t("delete"), color=MaterialTheme.colorScheme.error) },
-                    onClick = { 
-                        viewModel.deletePaths(targets.toList())
-                        showMenu = false 
-                    },
-                    leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, tint=MaterialTheme.colorScheme.error) }
-                )
-            }
-        }
-    }
-
-    if (showRenameDialog) {
-        AlertDialog(
-            onDismissRequest = { showRenameDialog = false },
-            title = { Text(viewModel.t("rename")) },
-            text = { OutlinedTextField(newName, { newName = it }, label = { Text(viewModel.t("folder_name_placeholder")) }) },
-            confirmButton = {
-                Button(onClick = {
-                    if (newName.isNotBlank() && newName != name) {
-                        viewModel.renamePath(file.path, newName, file.id)
-                    }
-                    showRenameDialog = false
-                }) { Text(viewModel.t("save")) }
-            },
-            dismissButton = { TextButton(onClick = { showRenameDialog = false }) { Text(viewModel.t("cancel")) } }
+        GridFileItem(
+            file = file, 
+            name = name, 
+            isFolder = false, 
+            size = file.size, 
+            isSelected = isSelected, 
+            isSelectionMode = viewModel.selectionSet.isNotEmpty(), 
+            isLocked = file.isLocked, 
+            isStarred = file.isStarred, 
+            zoom = viewModel.zoomLevel, 
+            viewModel = viewModel, 
+            onLongClick = { viewModel.toggleSelection(file.id) }, 
+            onClick = onClick
         )
     }
 }
@@ -999,9 +1199,29 @@ fun SettingsScreen(viewModel: DisboxViewModel) {
                     Column { Text(viewModel.t("previews"), fontWeight = FontWeight.Bold); Text(viewModel.t("previews_desc"), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface.copy(0.6f)) }
                     Switch(viewModel.showPreviews, { viewModel.updatePreviews(it) })
                 }
+                if (viewModel.showPreviews) {
+                    Column(Modifier.padding(start = 24.dp)) {
+                        Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), Arrangement.SpaceBetween, Alignment.CenterVertically) {
+                            Text(viewModel.t("image_previews"), fontSize = 13.sp)
+                            Switch(viewModel.showImagePreviews, { viewModel.updateImagePreviews(it) }, modifier = Modifier.scale(0.8f))
+                        }
+                        Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), Arrangement.SpaceBetween, Alignment.CenterVertically) {
+                            Text(viewModel.t("video_previews"), fontSize = 13.sp)
+                            Switch(viewModel.showVideoPreviews, { viewModel.updateVideoPreviews(it) }, modifier = Modifier.scale(0.8f))
+                        }
+                    }
+                }
                 Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), Arrangement.SpaceBetween, Alignment.CenterVertically) {
                     Column { Text(viewModel.t("show_recent"), fontWeight = FontWeight.Bold); Text(viewModel.t("show_recent_desc"), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface.copy(0.6f)) }
                     Switch(viewModel.showRecent, { viewModel.updateRecent(it) })
+                }
+                Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), Arrangement.SpaceBetween, Alignment.CenterVertically) {
+                    Column { Text(viewModel.t("cloud_save"), fontWeight = FontWeight.Bold); Text(viewModel.t("cloud_save_desc"), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface.copy(0.6f)) }
+                    Switch(viewModel.cloudSaveEnabled, { viewModel.updateCloudSaveEnabled(it) })
+                }
+                Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), Arrangement.SpaceBetween, Alignment.CenterVertically) {
+                    Column { Text(viewModel.t("animations"), fontWeight = FontWeight.Bold); Text(viewModel.t("animations_desc"), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface.copy(0.6f)) }
+                    Switch(viewModel.animationsEnabled, { viewModel.updateAnimationsEnabled(it) })
                 }
             }
         }

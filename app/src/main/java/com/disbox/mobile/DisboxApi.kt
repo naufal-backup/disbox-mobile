@@ -192,7 +192,7 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
             val history = discMap["history"] as List<String>
 
             val currentHash = hashedWebhook ?: return@withContext false
-            val localFiles = getFileSystem()
+            val localFiles = getFileSystem(filterCloudSave = false)
             val meta = metaDao.getMetadata(currentHash)
             val localMsgId = meta?.lastMsgId
 
@@ -247,11 +247,12 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
         db.withTransaction {
             fileDao.deleteAllByHash(currentHash)
             fileDao.insertAll(files.map { f ->
-                val parts = f.path.split("/")
+                val normalizedPath = f.path.trim('/')
+                val parts = normalizedPath.split("/")
                 val name = parts.last()
                 val parent = parts.dropLast(1).joinToString("/").ifEmpty { "/" }
                 FileEntity(
-                    f.id, currentHash, f.path, parent, name, f.size, f.createdAt, 
+                    f.id, currentHash, normalizedPath, parent, name, f.size, f.createdAt, 
                     gson.toJson(f.messageIds), 
                     if (f.isLocked) 1 else 0, 
                     if (f.isStarred) 1 else 0
@@ -286,9 +287,10 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
         if (isDirty) onStatusChange?.invoke("dirty")
     }
 
-    suspend fun getFileSystem(): List<DisboxFile> = withContext(Dispatchers.IO) {
+    suspend fun getFileSystem(filterCloudSave: Boolean = true): List<DisboxFile> = withContext(Dispatchers.IO) {
         val currentHash = hashedWebhook ?: return@withContext emptyList()
-        fileDao.getAllFilesByHash(currentHash).map {
+        fileDao.getAllFilesByHash(currentHash).mapNotNull {
+            if (filterCloudSave && it.path.startsWith("cloudsave/")) return@mapNotNull null
             DisboxFile(
                 it.id,
                 it.path,
@@ -303,7 +305,7 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
 
     suspend fun uploadMetadataToDiscord(explicitFiles: List<DisboxFile>? = null) = withContext(Dispatchers.IO) {
         val currentHash = hashedWebhook ?: return@withContext
-        val files = explicitFiles ?: getFileSystem()
+        val files = explicitFiles ?: getFileSystem(filterCloudSave = false)
         if (files.isEmpty()) return@withContext
         
         val pinSetting = settingsDao.getSetting(currentHash, "pin_hash")
@@ -353,9 +355,10 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
     }
 
     suspend fun createFile(path: String, msgIds: List<String>, size: Long, id: String? = null) {
-        val files = getFileSystem().toMutableList()
+        val files = getFileSystem(filterCloudSave = false).toMutableList()
+        val normalizedPath = path.trim('/')
         val fileId = id ?: UUID.randomUUID().toString()
-        val entry = DisboxFile(fileId, path, msgIds, size)
+        val entry = DisboxFile(fileId, normalizedPath, msgIds, size)
         val idx = files.indexOfFirst { it.id == fileId }
         if (idx >= 0) files[idx] = entry else files.add(entry)
         saveMetadataToLocal(files, isDirty = true)
@@ -364,9 +367,9 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
 
     suspend fun checkDuplicate(name: String, parentPath: String): Boolean = withContext(Dispatchers.IO) {
         val currentHash = hashedWebhook ?: return@withContext false
-        val normalizedParent = if (parentPath == "/") "/" else parentPath.trim('/')
+        val normalizedParent = if (parentPath == "/") "" else parentPath.trim('/')
         
-        val fullPath = if (normalizedParent == "/" || normalizedParent.isEmpty()) name else "$normalizedParent/$name"
+        val fullPath = if (normalizedParent.isEmpty()) name else "$normalizedParent/$name"
         
         val existingFile = fileDao.getFileByPath(fullPath, currentHash)
         if (existingFile != null) return@withContext true
@@ -380,44 +383,50 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
 
     suspend fun createFolder(folderName: String, currentPath: String): Boolean {
         if (checkDuplicate(folderName, currentPath)) return false
-        val dirPath = if (currentPath == "/") "" else currentPath.trimStart('/')
+        val dirPath = currentPath.trim('/')
         val folderPath = if (dirPath.isEmpty()) "$folderName/.keep" else "$dirPath/$folderName/.keep"
         createFile(folderPath, emptyList(), 0)
         return true
     }
 
     suspend fun deletePath(targetPath: String, id: String? = null) {
-        val files = getFileSystem().filterNot {
-            (id != null && it.id == id) || (id == null && it.path == targetPath) || it.path.startsWith("$targetPath/")
+        val normalizedTarget = targetPath.trim('/')
+        val files = getFileSystem(filterCloudSave = false).filterNot {
+            (id != null && it.id == id) || (id == null && it.path == normalizedTarget) || it.path.startsWith("$normalizedTarget/")
         }
         saveMetadataToLocal(files, isDirty = true)
         uploadMetadataToDiscord(files)
     }
 
     suspend fun bulkDelete(items: List<String>) {
-        val files = getFileSystem()
+        val files = getFileSystem(filterCloudSave = false)
         val filtered = files.filterNot { f ->
-            items.any { item -> f.id == item || f.path == item || f.path.startsWith("$item/") }
+            items.any { item -> 
+                val normalizedItem = item.trim('/')
+                f.id == item || f.path == normalizedItem || f.path.startsWith("$normalizedItem/") 
+            }
         }
         saveMetadataToLocal(filtered, isDirty = true)
         uploadMetadataToDiscord(filtered)
     }
 
     suspend fun renamePath(oldPath: String, newPath: String, id: String? = null): Boolean {
-        val parts = newPath.split("/")
+        val normalizedOld = oldPath.trim('/')
+        val normalizedNew = newPath.trim('/')
+        val parts = normalizedNew.split("/")
         val name = parts.last()
         val parentPath = parts.dropLast(1).joinToString("/").ifEmpty { "/" }
         
         if (checkDuplicate(name, parentPath)) return false
 
         var found = false
-        val files = getFileSystem().map {
+        val files = getFileSystem(filterCloudSave = false).map {
             when {
-                (id != null && it.id == id) || (id == null && it.path == oldPath) -> {
-                    found = true; it.copy(path = newPath)
+                (id != null && it.id == id) || (id == null && it.path == normalizedOld) -> {
+                    found = true; it.copy(path = normalizedNew)
                 }
-                it.path.startsWith("$oldPath/") -> {
-                    found = true; it.copy(path = it.path.replaceFirst("$oldPath/", "$newPath/"))
+                it.path.startsWith("$normalizedOld/") -> {
+                    found = true; it.copy(path = it.path.replaceFirst("$normalizedOld/", "$normalizedNew/"))
                 }
                 else -> it
             }
@@ -430,21 +439,25 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
     }
 
     suspend fun movePath(sourcePath: String, destDir: String, id: String? = null) {
-        val name = sourcePath.split("/").last()
-        val newPath = if (destDir.isEmpty()) name else "$destDir/$name"
-        renamePath(sourcePath, newPath, id)
+        val normalizedSource = sourcePath.trim('/')
+        val name = normalizedSource.split("/").last()
+        val normalizedDest = destDir.trim('/')
+        val newPath = if (normalizedDest.isEmpty()) name else "$normalizedDest/$name"
+        renamePath(normalizedSource, newPath, id)
     }
 
     suspend fun copyPath(sourcePath: String, destDir: String, id: String? = null) {
-        val files = getFileSystem().toMutableList()
-        val name = sourcePath.split("/").last()
-        val newPath = if (destDir.isEmpty()) name else "$destDir/$name"
+        val normalizedSource = sourcePath.trim('/')
+        val normalizedDest = destDir.trim('/')
+        val files = getFileSystem(filterCloudSave = false).toMutableList()
+        val name = normalizedSource.split("/").last()
+        val newPath = if (normalizedDest.isEmpty()) name else "$normalizedDest/$name"
         val toAdd = mutableListOf<DisboxFile>()
         files.forEach { f ->
-            if ((id != null && f.id == id) || (id == null && f.path == sourcePath)) {
+            if ((id != null && f.id == id) || (id == null && f.path == normalizedSource)) {
                 toAdd.add(f.copy(id = UUID.randomUUID().toString(), path = newPath, createdAt = System.currentTimeMillis()))
-            } else if (f.path.startsWith("$sourcePath/")) {
-                toAdd.add(f.copy(id = UUID.randomUUID().toString(), path = f.path.replaceFirst("$sourcePath/", "$newPath/"), createdAt = System.currentTimeMillis()))
+            } else if (f.path.startsWith("$normalizedSource/")) {
+                toAdd.add(f.copy(id = UUID.randomUUID().toString(), path = f.path.replaceFirst("$normalizedSource/", "$newPath/"), createdAt = System.currentTimeMillis()))
             }
         }
         if (toAdd.isNotEmpty()) {
@@ -456,7 +469,7 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
 
     // PIN and Status methods
     suspend fun bulkSetStatus(idsOrPaths: Set<String>, isLocked: Boolean? = null, isStarred: Boolean? = null) = withContext(Dispatchers.IO) {
-        val files = getFileSystem().toMutableList()
+        val files = getFileSystem(filterCloudSave = false).toMutableList()
         var changed = false
         files.forEachIndexed { i, f ->
             var newLocked = f.isLocked
@@ -466,7 +479,8 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
             if (isLocked != null) {
                 // Lock bersifat rekursif: isi folder ikut terkunci
                 val isLockTarget = idsOrPaths.any { target ->
-                    f.id == target || f.path == target || f.path == "$target/.keep" || f.path.startsWith("$target/")
+                    val normalizedTarget = target.trim('/')
+                    f.id == target || f.path == normalizedTarget || f.path == "$normalizedTarget/.keep" || f.path.startsWith("$normalizedTarget/")
                 }
                 if (isLockTarget) {
                     newLocked = isLocked
@@ -477,7 +491,8 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
             if (isStarred != null) {
                 // Star bersifat non-rekursif: hanya folder/file itu saja
                 val isStarTarget = idsOrPaths.any { target ->
-                    f.id == target || f.path == target || f.path == "$target/.keep"
+                    val normalizedTarget = target.trim('/')
+                    f.id == target || f.path == normalizedTarget || f.path == "$normalizedTarget/.keep"
                 }
                 if (isStarTarget) {
                     newStarred = isStarred
