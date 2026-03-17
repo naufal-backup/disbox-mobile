@@ -279,13 +279,15 @@ fun BreadcrumbBar(currentPath: String, onNavigate: (String) -> Unit) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DisboxApp(viewModel: DisboxViewModel, onFinish: () -> Unit) {
-    val allTabIds = listOf("drive", "recent", "starred", "locked", "cloud-save", "settings")
-    val allTabs = listOf(viewModel.t("drive"), viewModel.t("recent"), viewModel.t("starred"), viewModel.t("locked"), viewModel.t("cloud_save"), viewModel.t("settings"))
-    val allIcons = listOf(Icons.Default.Storage, Icons.Default.History, Icons.Default.Star, Icons.Default.Lock, Icons.Default.Cloud, Icons.Default.Settings)
+    val allTabIds = listOf("drive", "recent", "starred", "locked", "cloud-save", "shared", "settings")
+    val allTabs = listOf(viewModel.t("drive"), viewModel.t("recent"), viewModel.t("starred"), viewModel.t("locked"), viewModel.t("cloud_save"), "Shared", viewModel.t("settings"))
+    val allIcons = listOf(Icons.Default.Storage, Icons.Default.History, Icons.Default.Star, Icons.Default.Lock, Icons.Default.Cloud, Icons.Default.Link, Icons.Default.Settings)
     
     val filteredIndices = allTabIds.indices.filter { i -> 
         val id = allTabIds[i]
-        (id != "recent" || viewModel.showRecent) && (id != "cloud-save" || viewModel.cloudSaveEnabled)
+        (id != "recent" || viewModel.showRecent) && 
+        (id != "cloud-save" || viewModel.cloudSaveEnabled) &&
+        (id != "shared" || viewModel.shareEnabled)
     }
     val tabIds = filteredIndices.map { allTabIds[it] }
     val tabs = filteredIndices.map { allTabs[it] }
@@ -334,6 +336,7 @@ fun DisboxApp(viewModel: DisboxViewModel, onFinish: () -> Unit) {
                         "starred" -> DriveScreen(viewModel, isStarredView = true)
                         "locked" -> if (viewModel.isVerified) DriveScreen(viewModel, isLockedView = true) else LockedGateway(viewModel)
                         "cloud-save" -> CloudSaveScreen(viewModel)
+                        "shared" -> SharedScreen(viewModel)
                         "settings" -> SettingsScreen(viewModel)
                         else -> PlaceholderScreen(viewModel.activePage)
                     }
@@ -664,7 +667,8 @@ fun DriveScreen(viewModel: DisboxViewModel, isLockedView: Boolean = false, isSta
     var pinPrompt by remember { mutableStateOf<(() -> Unit)?>(null) }
     var showFolderPickerForUnlock by remember { mutableStateOf(false) }
     var showSortMenu by remember { mutableStateOf(false) }
-
+    var showSelectionMenu by remember { mutableStateOf(false) }
+    var showShareDialog by remember { mutableStateOf<Pair<String, String?>?>(null) }
     val processed = remember(viewModel.allFiles, viewModel.currentPath, isLockedView, isStarredView, isRecentView, viewModel.sortMode) {
         val fileList = mutableListOf<DisboxFile>(); val folderList = mutableListOf<Pair<String, String>>()
         val dirPath = viewModel.currentPath.trim('/')
@@ -759,39 +763,97 @@ fun DriveScreen(viewModel: DisboxViewModel, isLockedView: Boolean = false, isSta
                         val allStarred = selectedItems.isNotEmpty() && selectedItems.all { it.isStarred }
                         val allLocked = selectedItems.isNotEmpty() && selectedItems.all { it.isLocked }
 
-                        // Single select actions: Rename & Download
-                        if (isSingleSelect) {
-                            if (firstFile != null) {
-                                IconButton(onClick = { viewModel.downloadFile(firstFile) }) {
-                                    Icon(Icons.Default.Download, null)
-                                }
+                        Box {
+                            IconButton(onClick = { showSelectionMenu = true }) {
+                                Icon(Icons.Default.MoreVert, null)
                             }
-                            IconButton(onClick = { 
-                                val item = selectedItems.firstOrNull()
-                                if (item != null) {
-                                    itemToRename = if (item.path.endsWith(".keep")) {
-                                        val folderPath = item.path.removeSuffix("/.keep")
-                                        folderPath.split("/").last() to folderPath
-                                    } else {
-                                        item.path.split("/").last() to item.id
+                            DropdownMenu(
+                                expanded = showSelectionMenu,
+                                onDismissRequest = { showSelectionMenu = false }
+                            ) {
+                                if (isSingleSelect && firstFile != null) {
+                                    DropdownMenuItem(
+                                        text = { Text(viewModel.t("download")) },
+                                        leadingIcon = { Icon(Icons.Default.Download, null) },
+                                        onClick = {
+                                            showSelectionMenu = false
+                                            viewModel.downloadFile(firstFile)
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text(viewModel.t("rename")) },
+                                        leadingIcon = { Icon(Icons.Default.Edit, null) },
+                                        onClick = {
+                                            showSelectionMenu = false
+                                            val item = selectedItems.firstOrNull()
+                                            if (item != null) {
+                                                val isFolder = item.path.endsWith("/.keep")
+                                                val oldPath = if (isFolder) item.path.removeSuffix("/.keep") else item.path
+                                                val oldName = oldPath.split("/").last()
+                                                
+                                                itemToRename = oldName to oldPath // Always store the full path
+                                                newName = oldName
+                                                showRenameDialog = true
+                                            }
+                                        }
+                                    )
+                                    if (viewModel.shareEnabled) {
+                                        DropdownMenuItem(
+                                            text = { Text("Share") },
+                                            leadingIcon = { Icon(Icons.Default.Link, null) },
+                                            onClick = {
+                                                showSelectionMenu = false
+                                                val item = selectedItems.firstOrNull()
+                                                if (item != null) {
+                                                    showShareDialog = item.path to item.id
+                                                }
+                                            }
+                                        )
                                     }
-                                    newName = itemToRename!!.first
-                                    showRenameDialog = true
                                 }
-                            }) {
-                                Icon(Icons.Default.Edit, null)
+                                DropdownMenuItem(
+                                    text = { Text(if (allStarred) viewModel.t("unstar") else viewModel.t("star")) },
+                                    leadingIcon = { Icon(if (allStarred) Icons.Default.StarBorder else Icons.Default.Star, null) },
+                                    onClick = {
+                                        showSelectionMenu = false
+                                        viewModel.toggleBulkStatus(viewModel.selectionSet, isStarred = !allStarred)
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(if (allLocked) viewModel.t("unlock") else viewModel.t("lock")) },
+                                    leadingIcon = { Icon(if (isLockedView || allLocked) Icons.Default.LockOpen else Icons.Default.Lock, null) },
+                                    onClick = {
+                                        showSelectionMenu = false
+                                        if (isLockedView) showFolderPickerForUnlock = true 
+                                        else viewModel.toggleBulkStatus(viewModel.selectionSet, isLocked = !allLocked)
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(viewModel.t("move")) },
+                                    leadingIcon = { Icon(Icons.Default.DriveFileMove, null) },
+                                    onClick = {
+                                        showSelectionMenu = false
+                                        viewModel.startMove(viewModel.selectionSet)
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(viewModel.t("copy")) },
+                                    leadingIcon = { Icon(Icons.Default.ContentCopy, null) },
+                                    onClick = {
+                                        showSelectionMenu = false
+                                        viewModel.startCopy(viewModel.selectionSet)
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(viewModel.t("delete")) },
+                                    leadingIcon = { Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error) },
+                                    onClick = {
+                                        showSelectionMenu = false
+                                        showDeleteConfirm = viewModel.selectionSet.toList()
+                                    }
+                                )
                             }
                         }
-
-                        IconButton(onClick = { viewModel.toggleBulkStatus(viewModel.selectionSet, isStarred = !allStarred) }) {
-                            Icon(if (allStarred) Icons.Default.StarBorder else Icons.Default.Star, null)
-                        }
-                        IconButton(onClick = { if (isLockedView) showFolderPickerForUnlock = true else viewModel.toggleBulkStatus(viewModel.selectionSet, isLocked = !allLocked) }) {
-                            Icon(if (isLockedView) Icons.Default.LockOpen else if (allLocked) Icons.Default.LockOpen else Icons.Default.Lock, null)
-                        }
-                        IconButton(onClick = { viewModel.startMove(viewModel.selectionSet) }) { Icon(Icons.Default.DriveFileMove, null) }
-                        IconButton(onClick = { viewModel.startCopy(viewModel.selectionSet) }) { Icon(Icons.Default.ContentCopy, null) }
-                        IconButton(onClick = { showDeleteConfirm = viewModel.selectionSet.toList() }) { Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error) }
                         IconButton(onClick = { viewModel.clearSelection() }) { Icon(Icons.Default.Close, null) }
                     } else {
                         MetadataStatusIndicator(viewModel.metadataStatus, viewModel)
@@ -929,7 +991,195 @@ fun DriveScreen(viewModel: DisboxViewModel, isLockedView: Boolean = false, isSta
             dismissButton = { TextButton(onClick = { showRenameDialog = false }) { Text(viewModel.t("cancel")) } }
         )
     }
+    if (showShareDialog != null) {
+        ShareDialog(
+            filePath = showShareDialog!!.first,
+            fileId = showShareDialog!!.second,
+            viewModel = viewModel,
+            onClose = { showShareDialog = null }
+        )
+    }
     if (previewFile != null) FilePreviewScreen(previewFile!!, viewModel) { previewFile = null }
+}
+
+@Composable
+fun ShareDialog(filePath: String, fileId: String?, viewModel: DisboxViewModel, onClose: () -> Unit) {
+    var expiryDays by remember { mutableStateOf<Long?>(7) }
+    var permission by remember { mutableStateOf("download") }
+    var generating by remember { mutableStateOf(false) }
+    var generatedLink by remember { mutableStateOf<String?>(null) }
+    val context = LocalContext.current
+
+    AlertDialog(
+        onDismissRequest = onClose,
+        title = { Text(viewModel.t("share_file")) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Text("📄 ${filePath.split("/").last()}", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
+                
+                if (generatedLink == null) {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(viewModel.t("valid_until"), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf(1L to "days_1", 7L to "days_7", 30L to "days_30", null to "permanent").forEach { (days, key) ->
+                                FilterChip(
+                                    selected = expiryDays == days,
+                                    onClick = { expiryDays = days },
+                                    label = { Text(viewModel.t(key)) }
+                                )
+                            }
+                        }
+                    }
+
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(viewModel.t("permission"), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            FilterChip(
+                                selected = permission == "view",
+                                onClick = { permission = "view" },
+                                label = { Text(viewModel.t("view_only")) }
+                            )
+                            FilterChip(
+                                selected = permission == "download",
+                                onClick = { permission = "download" },
+                                label = { Text(viewModel.t("download_perm")) }
+                            )
+                        }
+                    }
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(viewModel.t("link_ready"), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        OutlinedTextField(
+                            value = generatedLink!!,
+                            onValueChange = {},
+                            readOnly = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            trailingIcon = {
+                                IconButton(onClick = {
+                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                    clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Disbox Link", generatedLink))
+                                    android.widget.Toast.makeText(context, viewModel.t("copy_link"), android.widget.Toast.LENGTH_SHORT).show()
+                                }) { Icon(Icons.Default.ContentCopy, null) }
+                            }
+                        )
+                        Text(viewModel.t("link_hint"), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            if (generatedLink == null) {
+                Button(
+                    onClick = {
+                        generating = true
+                        val expiresAt = if (expiryDays != null) System.currentTimeMillis() + expiryDays!! * 24 * 3600 * 1000 else null
+                        viewModel.createShareLink(filePath, fileId, permission, expiresAt) { res ->
+                            generatedLink = res["link"] as? String
+                            generating = false
+                        }
+                    },
+                    enabled = !generating
+                ) {
+                    if (generating) CircularProgressIndicator(Modifier.size(18.dp), color = Color.White)
+                    else Text(viewModel.t("generate_link"))
+                }
+            } else {
+                Button(onClick = onClose) { Text(viewModel.t("done")) }
+            }
+        },
+        dismissButton = {
+            if (generatedLink == null) TextButton(onClick = onClose) { Text(viewModel.t("cancel")) }
+        }
+    )
+}
+
+@Composable
+fun SharedScreen(viewModel: DisboxViewModel) {
+    var showRevokeAllConfirm by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+
+    Column(Modifier.fillMaxSize().padding(16.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Text(viewModel.t("shared_by_me"), fontSize = 24.sp, fontWeight = FontWeight.Bold)
+            if (viewModel.shareLinks.isNotEmpty()) {
+                TextButton(
+                    onClick = { showRevokeAllConfirm = true },
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Icon(Icons.Default.DeleteSweep, null, Modifier.size(18.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text(viewModel.t("revoke_all"))
+                }
+            }
+        }
+        
+        Spacer(Modifier.height(16.dp))
+
+        if (viewModel.shareLinks.isEmpty()) {
+            Box(Modifier.fillMaxSize(), Alignment.Center) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(Icons.Default.LinkOff, null, Modifier.size(64.dp), Color.Gray.copy(alpha = 0.5f))
+                    Spacer(Modifier.height(16.dp))
+                    Text(viewModel.t("no_shared_links"), fontWeight = FontWeight.Bold)
+                    Text(viewModel.t("shared_hint"), fontSize = 12.sp, color = Color.Gray)
+                }
+            }
+        } else {
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(viewModel.shareLinks) { link ->
+                    val fileName = link.file_path.split("/").last()
+                    Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+                        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Box(Modifier.size(40.dp).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f), CircleShape), Alignment.Center) {
+                                Text(getFileIcon(fileName), fontSize = 20.sp)
+                            }
+                            Spacer(Modifier.width(12.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(fileName, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        if (link.permission == "download") viewModel.t("download_perm") else viewModel.t("view_only"),
+                                        fontSize = 10.sp, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold
+                                    )
+                                    val expiryText = if (link.expires_at == null) viewModel.t("permanent")
+                                        else {
+                                            val diff = link.expires_at - System.currentTimeMillis()
+                                            if (diff <= 0) viewModel.t("expired")
+                                            else viewModel.t("days_left", mapOf("days" to (Math.ceil(diff.toDouble() / (24 * 3600 * 1000)).toInt().toString())))
+                                        }
+                                    Text(expiryText, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
+                                }
+                            }
+                            IconButton(onClick = {
+                                val fullUrl = "${viewModel.cfWorkerUrl}/share/${link.token}"
+                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Disbox Link", fullUrl))
+                                android.widget.Toast.makeText(context, viewModel.t("copy_link"), android.widget.Toast.LENGTH_SHORT).show()
+                            }) { Icon(Icons.Default.ContentCopy, null, Modifier.size(18.dp)) }
+                            IconButton(onClick = { viewModel.revokeShareLink(link.id, link.token) }) {
+                                Icon(Icons.Default.LinkOff, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (showRevokeAllConfirm) {
+        AlertDialog(
+            onDismissRequest = { showRevokeAllConfirm = false },
+            title = { Text(viewModel.t("revoke_all_confirm")) },
+            text = { Text(viewModel.t("revoke_all_desc")) },
+            confirmButton = {
+                Button(
+                    onClick = { viewModel.revokeAllLinks(); showRevokeAllConfirm = false },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) { Text(viewModel.t("confirm")) }
+            },
+            dismissButton = { TextButton(onClick = { showRevokeAllConfirm = false }) { Text(viewModel.t("cancel")) } }
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -1222,6 +1472,53 @@ fun SettingsScreen(viewModel: DisboxViewModel) {
                 Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), Arrangement.SpaceBetween, Alignment.CenterVertically) {
                     Column { Text(viewModel.t("animations"), fontWeight = FontWeight.Bold); Text(viewModel.t("animations_desc"), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface.copy(0.6f)) }
                     Switch(viewModel.animationsEnabled, { viewModel.updateAnimationsEnabled(it) })
+                }
+            }
+        }
+
+        Card(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+            Column(Modifier.padding(20.dp)) {
+                Text("Share & Privacy", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(bottom = 12.dp))
+                
+                Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), Arrangement.SpaceBetween, Alignment.CenterVertically) {
+                    Column { Text("Enable Share", fontWeight = FontWeight.Bold); Text("Bagikan file via link ke siapapun", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface.copy(0.6f)) }
+                    Switch(viewModel.shareEnabled, { viewModel.saveShareSettings(it, viewModel.shareMode, viewModel.cfWorkerUrl) })
+                }
+                
+                if (viewModel.shareEnabled) {
+                    Spacer(Modifier.height(8.dp))
+                    Text("Select Worker", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface.copy(0.6f), modifier = Modifier.padding(bottom = 8.dp))
+                    
+                    val workers = listOf(
+                        "Main" to "https://disbox-shared-link.naufal-backup.workers.dev",
+                        "New" to "https://disbox-shared-link.alamsyahnaufal453.workers.dev",
+                        "Public #3" to "https://disbox-worker-2.naufal-backup.workers.dev",
+                        "Public #4" to "https://disbox-worker-3.naufal-backup.workers.dev"
+                    )
+                    
+                    var expanded by remember { mutableStateOf(false) }
+                    Box {
+                        OutlinedButton(
+                            onClick = { expanded = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            val currentLabel = workers.find { it.second == viewModel.cfWorkerUrl }?.first ?: "Custom"
+                            Text(currentLabel, modifier = Modifier.weight(1f))
+                            Icon(Icons.Default.ArrowDropDown, null)
+                        }
+                        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                            workers.forEach { (label, url) ->
+                                DropdownMenuItem(
+                                    text = { Text(label) },
+                                    onClick = {
+                                        viewModel.saveShareSettings(true, viewModel.shareMode, url)
+                                        expanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }

@@ -27,9 +27,30 @@ data class DisboxFile(
     val isStarred: Boolean = false
 )
 
+data class ShareLink(
+    val id: String,
+    val hash: String,
+    val file_path: String,
+    val file_id: String?,
+    val token: String,
+    val permission: String,
+    val expires_at: Long?,
+    val created_at: Long
+)
+
+data class ShareSettings(
+    val hash: String,
+    val mode: String = "public",
+    val cf_worker_url: String?,
+    val cf_api_token: String?,
+    val webhook_url: String?,
+    val enabled: Boolean = false
+)
+
 data class MetadataContainer(
     val files: List<DisboxFile>,
     val pinHash: String? = null,
+    val shareLinks: List<ShareLink>? = null,
     val lastMsgId: String? = null,
     val isDirty: Boolean? = null,
     val updatedAt: Long? = null,
@@ -37,6 +58,17 @@ data class MetadataContainer(
 )
 
 class DisboxApi(private val context: Context, var webhookUrl: String) {
+    companion object {
+        const val PUBLIC_WORKER_URL = "https://disbox-shared-link.naufal-backup.workers.dev"
+        val PUBLIC_API_KEYS = mapOf(
+            "https://disbox-shared-link.alamsyahnaufal453.workers.dev" to "disbox-shared-link-0002",
+            "https://disbox-shared-link.naufal-backup.workers.dev" to "disbox-shared-link-0001",
+            "https://disbox-worker-2.naufal-backup.workers.dev" to "disbox-shared-link-0001",
+            "https://disbox-worker-3.naufal-backup.workers.dev" to "disbox-shared-link-0001"
+        )
+        const val DEFAULT_PUBLIC_API_KEY = "disbox-shared-link-0001"
+    }
+
     private val client = OkHttpClient()
     private val gson = Gson()
     var hashedWebhook: String? = null
@@ -52,6 +84,8 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
     private val fileDao by lazy { db.fileDao() }
     private val metaDao by lazy { db.metadataSyncDao() }
     private val settingsDao by lazy { db.settingsDao() }
+    private val shareSettingsDao by lazy { db.shareSettingsDao() }
+    private val shareLinkDao by lazy { db.shareLinkDao() }
 
     private val metadataDir: File by lazy {
         val dir = File(Environment.getExternalStorageDirectory(), "disbox")
@@ -145,7 +179,7 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
     private suspend fun downloadMetadataFromMsg(msgId: String): MetadataContainer = withContext(Dispatchers.IO) {
         val request = Request.Builder().url("$baseUrl/messages/$msgId").build()
         val response = client.newCall(request).execute()
-        if (!response.isSuccessful) throw Exception("Message $msgId not accessible")
+        if (!response.isSuccessful) throw Exception("Message $msgId not accessible: ${response.code}")
 
         val body = response.body?.string() ?: throw Exception("Empty body")
         val map: Map<String, Any> = gson.fromJson(
@@ -168,8 +202,31 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
         val attBody = String(decryptedBytes, Charsets.UTF_8)
 
         try {
-            gson.fromJson(attBody, MetadataContainer::class.java)
+            // Manual parsing to avoid Proguard/Kapt issues
+            val jsonObject = gson.fromJson(attBody, com.google.gson.JsonObject::class.java)
+
+            val files: List<DisboxFile> = if (jsonObject.has("files")) {
+                gson.fromJson(jsonObject.get("files"), object : TypeToken<List<DisboxFile>>() {}.type) ?: emptyList()
+            } else {
+                // Legacy support for metadata being just a list of files
+                gson.fromJson(attBody, object : TypeToken<List<DisboxFile>>() {}.type) ?: emptyList()
+            }
+
+            val shareLinks: List<ShareLink> = if (jsonObject.has("shareLinks")) {
+                gson.fromJson(jsonObject.get("shareLinks"), object : TypeToken<List<ShareLink>>() {}.type) ?: emptyList()
+            } else {
+                emptyList()
+            }
+
+            val pinHash = if (jsonObject.has("pinHash")) jsonObject.get("pinHash").asString else null
+            
+            MetadataContainer(
+                files = files,
+                shareLinks = shareLinks,
+                pinHash = pinHash
+            )
         } catch (e: Exception) {
+            // Fallback for very old metadata that might not even be a JSON object
             val files = gson.fromJson<List<DisboxFile>>(attBody, object : TypeToken<List<DisboxFile>>() {}.type)
             MetadataContainer(files = files)
         }
@@ -223,7 +280,7 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
             }
 
             if (container != null) {
-                saveMetadataToLocal(container.files, resolvedMsgId)
+                saveMetadataToLocal(container.files, resolvedMsgId, shareLinks = container.shareLinks ?: emptyList())
                 container.pinHash?.let { setPin(it, isAlreadyHashed = true) }
                 lastSyncedId = resolvedMsgId
                 onStatusChange?.invoke("synced")
@@ -240,7 +297,8 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
         files: List<DisboxFile>,
         msgId: String? = null,
         isDirty: Boolean = false,
-        explicitHistory: List<String>? = null
+        explicitHistory: List<String>? = null,
+        shareLinks: List<ShareLink>? = null
     ) = withContext(Dispatchers.IO) {
         val currentHash = hashedWebhook ?: return@withContext
 
@@ -258,6 +316,16 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
                     if (f.isStarred) 1 else 0
                 )
             })
+
+            shareLinks?.let { links ->
+                shareLinkDao.deleteAllByHash(currentHash)
+                links.forEach { link ->
+                    shareLinkDao.insertOrReplace(ShareLinkEntity(
+                        link.id, currentHash, link.file_path, link.file_id, 
+                        link.token, link.permission, link.expires_at, link.created_at
+                    ))
+                }
+            }
 
             val currentMeta = metaDao.getMetadata(currentHash)
             val history = if (explicitHistory != null) {
@@ -306,12 +374,16 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
     suspend fun uploadMetadataToDiscord(explicitFiles: List<DisboxFile>? = null) = withContext(Dispatchers.IO) {
         val currentHash = hashedWebhook ?: return@withContext
         val files = explicitFiles ?: getFileSystem(filterCloudSave = false)
-        if (files.isEmpty()) return@withContext
         
         val pinSetting = settingsDao.getSetting(currentHash, "pin_hash")
+        val shareLinks = getShareLinks()
+        
+        if (files.isEmpty() && pinSetting == null && shareLinks.isEmpty()) return@withContext
+
         val container = MetadataContainer(
             files = files,
-            pinHash = pinSetting?.value
+            pinHash = pinSetting?.value,
+            shareLinks = shareLinks
         )
         
         val json = gson.toJson(container)
@@ -339,7 +411,7 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
                 )
                 val newMsgId = map["id"] as? String
                 if (newMsgId != null) {
-                    saveMetadataToLocal(files, newMsgId, false)
+                    saveMetadataToLocal(files, newMsgId, false, shareLinks = shareLinks)
                     lastSyncedId = newMsgId
                     onStatusChange?.invoke("synced")
 
@@ -351,6 +423,162 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
         } catch (e: Exception) {
             e.printStackTrace()
             onStatusChange?.invoke("error")
+        }
+    }
+
+    // --- Sharing Methods ---
+
+    suspend fun getShareSettings(): ShareSettings = withContext(Dispatchers.IO) {
+        val currentHash = hashedWebhook ?: return@withContext ShareSettings("", enabled = true, cf_worker_url = null, cf_api_token = null, webhook_url = null)
+        val row = shareSettingsDao.getSettings(currentHash)
+        if (row != null) {
+            ShareSettings(row.hash, row.mode, row.cf_worker_url, row.cf_api_token, row.webhook_url, row.enabled == 1)
+        } else {
+            ShareSettings(currentHash, "public", PUBLIC_WORKER_URL, null, webhookUrl, true)
+        }
+    }
+
+    suspend fun saveShareSettings(settings: ShareSettings) = withContext(Dispatchers.IO) {
+        val currentHash = hashedWebhook ?: return@withContext
+        shareSettingsDao.insertOrReplace(ShareSettingsEntity(
+            hash = currentHash,
+            mode = settings.mode,
+            cf_worker_url = settings.cf_worker_url ?: "", // Provide non-null fallback
+            cf_api_token = settings.cf_api_token ?: "",  // Provide non-null fallback
+            webhook_url = settings.webhook_url ?: webhookUrl ?: "", // Ensure fallback chain is non-null
+            enabled = if (settings.enabled) 1 else 0
+        ))
+    }
+    suspend fun getShareLinks(): List<ShareLink> = withContext(Dispatchers.IO) {
+        val currentHash = hashedWebhook ?: return@withContext emptyList()
+        shareLinkDao.getAllLinksByHash(currentHash).map {
+            ShareLink(it.id, it.hash, it.filePath, it.fileId, it.token, it.permission, it.expiresAt, it.createdAt)
+        }
+    }
+
+    private fun getApiKey(settings: ShareSettings, cfWorkerUrl: String): String {
+        if (settings.mode == "private" && !settings.cf_api_token.isNullOrBlank()) {
+            return settings.cf_api_token.trim()
+        }
+
+        val normalize = { u: String -> u.lowercase().replace(Regex("^https?://"), "").trimEnd('/') }
+        val target = normalize(cfWorkerUrl)
+
+        for ((url, key) in PUBLIC_API_KEYS) {
+            if (normalize(url) == target) return key.trim()
+        }
+
+        return DEFAULT_PUBLIC_API_KEY.trim()
+    }
+
+    suspend fun createShareLink(filePath: String, fileId: String?, permission: String, expiresAt: Long?): Map<String, Any> = withContext(Dispatchers.IO) {
+        try {
+            val currentHash = hashedWebhook ?: return@withContext mapOf("ok" to false, "reason" to "no_hash")
+            val token = UUID.randomUUID().toString().replace("-", "")
+            val settings = getShareSettings()
+
+            var cfWorkerUrl = settings.cf_worker_url ?: PUBLIC_WORKER_URL
+            if (!cfWorkerUrl.startsWith("http")) {
+                return@withContext mapOf("ok" to false, "reason" to "invalid_worker_url")
+            }
+            cfWorkerUrl = cfWorkerUrl.trimEnd('/')
+
+            val apiKey = getApiKey(settings, cfWorkerUrl)
+
+            // Get messageIds for chunks
+            val file = if (fileId != null) {
+                fileDao.getFileById(fileId, currentHash)
+            } else {
+                fileDao.getFileByPath(filePath.trim('/'), currentHash)
+            } ?: return@withContext mapOf("ok" to false, "reason" to "file_not_found")
+
+            val messageIdsRaw = gson.fromJson<List<String>>(file.messageIds, object : TypeToken<List<String>>() {}.type)
+            val messageIds = messageIdsRaw.map { mapOf("msgId" to it, "attachmentUrl" to null) }
+
+            // Derive encryption key for the worker to help decrypt
+            val encryptionKeyB64 = android.util.Base64.encodeToString(CryptoUtils.deriveKey(webhookUrl), android.util.Base64.NO_WRAP)
+
+            val bodyMap = mapOf(
+                "token" to token,
+                "fileId" to fileId,
+                "filePath" to filePath,
+                "permission" to permission,
+                "expiresAt" to expiresAt,
+                "webhookHash" to currentHash,
+                "messageIds" to messageIds,
+                "encryptionKeyB64" to encryptionKeyB64,
+                "webhookUrl" to baseUrl
+            )
+
+            val body = gson.toJson(bodyMap).toRequestBody("application/json".toMediaTypeOrNull())
+            val request = Request.Builder()
+                .url("$cfWorkerUrl/share/create")
+                .post(body)
+                .addHeader("X-Disbox-Key", apiKey)
+                .build()
+
+            val res = client.newCall(request).execute()
+            if (!res.isSuccessful) {
+                return@withContext mapOf("ok" to false, "reason" to "worker_error", "status" to res.code)
+            }
+
+            val id = UUID.randomUUID().toString()
+            shareLinkDao.insertOrReplace(ShareLinkEntity(
+                id, currentHash, filePath, fileId, token, permission, expiresAt, System.currentTimeMillis()
+            ))
+
+            uploadMetadataToDiscord()
+
+            mapOf("ok" to true, "link" to "$cfWorkerUrl/share/$token", "token" to token, "id" to id)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            mapOf("ok" to false, "reason" to (e.message ?: "unknown"))
+        }
+    }
+
+    suspend fun revokeShareLink(id: String, token: String): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val currentHash = hashedWebhook ?: return@withContext false
+            val settings = getShareSettings()
+            val cfWorkerUrl = (settings.cf_worker_url ?: PUBLIC_WORKER_URL).trimEnd('/')
+            val apiKey = getApiKey(settings, cfWorkerUrl)
+
+            val request = Request.Builder()
+                .url("$cfWorkerUrl/share/revoke/$token")
+                .delete()
+                .addHeader("X-Disbox-Key", apiKey)
+                .build()
+
+            client.newCall(request).execute() // Best effort
+            shareLinkDao.deleteById(id, currentHash)
+            uploadMetadataToDiscord()
+            true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
+    }
+
+    suspend fun revokeAllLinks(): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val currentHash = hashedWebhook ?: return@withContext false
+            val settings = getShareSettings()
+            val cfWorkerUrl = (settings.cf_worker_url ?: PUBLIC_WORKER_URL).trimEnd('/')
+            val apiKey = getApiKey(settings, cfWorkerUrl)
+
+            val request = Request.Builder()
+                .url("$cfWorkerUrl/share/revoke-all/$currentHash")
+                .delete()
+                .addHeader("X-Disbox-Key", apiKey)
+                .build()
+
+            client.newCall(request).execute() // Best effort
+            shareLinkDao.deleteAllByHash(currentHash)
+            uploadMetadataToDiscord()
+            true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
         }
     }
 
@@ -413,11 +641,13 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
     suspend fun renamePath(oldPath: String, newPath: String, id: String? = null): Boolean {
         val normalizedOld = oldPath.trim('/')
         val normalizedNew = newPath.trim('/')
-        val parts = normalizedNew.split("/")
-        val name = parts.last()
-        val parentPath = parts.dropLast(1).joinToString("/").ifEmpty { "/" }
-        
-        if (checkDuplicate(name, parentPath)) return false
+
+        // Extract new name and parent path from the *new* path
+        val newParts = normalizedNew.split("/")
+        val newName = newParts.last()
+        val newParentPath = newParts.dropLast(1).joinToString("/").ifEmpty { null } // null for root
+
+        if (checkDuplicate(newName, newPath)) return false
 
         var found = false
         val files = getFileSystem(filterCloudSave = false).map {
@@ -437,6 +667,7 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
         }
         return found
     }
+
 
     suspend fun movePath(sourcePath: String, destDir: String, id: String? = null) {
         val normalizedSource = sourcePath.trim('/')

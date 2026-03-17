@@ -42,6 +42,28 @@ data class SettingsEntity(
     val value: String?
 )
 
+@Entity(tableName = "share_settings")
+data class ShareSettingsEntity(
+    @PrimaryKey val hash: String,
+    val mode: String = "public",
+    @ColumnInfo(name = "cf_worker_url") val cf_worker_url: String?,
+    @ColumnInfo(name = "cf_api_token") val cf_api_token: String?,
+    @ColumnInfo(name = "webhook_url") val webhook_url: String?,
+    val enabled: Int = 0
+)
+
+@Entity(tableName = "share_links")
+data class ShareLinkEntity(
+    @PrimaryKey val id: String,
+    val hash: String,
+    @ColumnInfo(name = "file_path") val filePath: String,
+    @ColumnInfo(name = "file_id") val fileId: String?,
+    val token: String,
+    val permission: String,
+    @ColumnInfo(name = "expires_at") val expiresAt: Long?,
+    @ColumnInfo(name = "created_at") val createdAt: Long
+)
+
 @Dao
 interface FileDao {
     @Query("SELECT * FROM files WHERE hash = :hash")
@@ -102,6 +124,30 @@ interface SettingsDao {
     suspend fun deleteSetting(hash: String, key: String)
 }
 
+@Dao
+interface ShareSettingsDao {
+    @Query("SELECT * FROM share_settings WHERE hash = :hash")
+    suspend fun getSettings(hash: String): ShareSettingsEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertOrReplace(settings: ShareSettingsEntity)
+}
+
+@Dao
+interface ShareLinkDao {
+    @Query("SELECT * FROM share_links WHERE hash = :hash ORDER BY created_at DESC")
+    suspend fun getAllLinksByHash(hash: String): List<ShareLinkEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertOrReplace(link: ShareLinkEntity)
+
+    @Query("DELETE FROM share_links WHERE id = :id AND hash = :hash")
+    suspend fun deleteById(id: String, hash: String)
+
+    @Query("DELETE FROM share_links WHERE hash = :hash")
+    suspend fun deleteAllByHash(hash: String)
+}
+
 val MIGRATION_1_2 = object : Migration(1, 2) {
     override fun migrate(database: SupportSQLiteDatabase) {
         database.execSQL("ALTER TABLE files RENAME TO files_old")
@@ -143,14 +189,51 @@ val MIGRATION_2_3 = object : Migration(2, 3) {
     }
 }
 
+val MIGRATION_3_4 = object : Migration(3, 4) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL("""
+            CREATE TABLE IF NOT EXISTS share_settings (
+                hash TEXT NOT NULL,
+                mode TEXT NOT NULL DEFAULT 'public',
+                cf_worker_url TEXT,
+                cf_api_token TEXT,
+                webhook_url TEXT,
+                enabled INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY(hash)
+            )
+        """)
+        database.execSQL("""
+            CREATE TABLE IF NOT EXISTS share_links (
+                id TEXT NOT NULL,
+                hash TEXT NOT NULL,
+                file_path TEXT NOT NULL,
+                file_id TEXT,
+                token TEXT NOT NULL,
+                permission TEXT NOT NULL,
+                expires_at INTEGER,
+                created_at INTEGER NOT NULL,
+                PRIMARY KEY(id)
+            )
+        """)
+    }
+}
+
 @Database(
-    entities = [FileEntity::class, MetadataSyncEntity::class, SettingsEntity::class],
-    version = 3
+    entities = [
+        FileEntity::class, 
+        MetadataSyncEntity::class, 
+        SettingsEntity::class,
+        ShareSettingsEntity::class,
+        ShareLinkEntity::class
+    ],
+    version = 4
 )
 abstract class DisboxDatabase : RoomDatabase() {
     abstract fun fileDao(): FileDao
     abstract fun metadataSyncDao(): MetadataSyncDao
     abstract fun settingsDao(): SettingsDao
+    abstract fun shareSettingsDao(): ShareSettingsDao
+    abstract fun shareLinkDao(): ShareLinkDao
 
     companion object {
         @Volatile
@@ -164,7 +247,7 @@ abstract class DisboxDatabase : RoomDatabase() {
                     "disbox.db"
                 )
                     .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                     .build()
                 INSTANCE = instance
                 instance

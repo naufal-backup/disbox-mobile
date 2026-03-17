@@ -90,6 +90,12 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
     var moveCopyMode by mutableStateOf<String?>(null)
     var moveCopyItems by mutableStateOf<Set<String>>(emptySet())
 
+    // --- Sharing States ---
+    var shareEnabled by mutableStateOf(true)
+    var shareMode by mutableStateOf("public")
+    var cfWorkerUrl by mutableStateOf("")
+    var shareLinks by mutableStateOf<List<ShareLink>>(emptyList())
+
     private val notificationHelper = NotificationHelper(application)
     private var pollJob: Job? = null
 
@@ -132,7 +138,7 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
             isVerified = false
         }
         activePage = page
-        if (page == "drive" || page == "locked" || page == "cloud-save") {
+        if (page == "drive" || page == "locked" || page == "cloud-save" || page == "shared") {
             currentPath = "/"
         }
         
@@ -141,6 +147,9 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
             allFiles = api?.getFileSystem(filterCloudSave = activePage != "cloud-save") ?: emptyList()
             if (page == "cloud-save") {
                 refresh(silent = true)
+            }
+            if (page == "shared") {
+                loadShareData()
             }
         }
     }
@@ -156,6 +165,7 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
         metadataStatus = "synced"
         activePage = "drive"
         isVerified = false
+        shareLinks = emptyList()
 
         webhookUrl = url
         prefs.edit().putString("webhook_url", url).apply()
@@ -171,6 +181,7 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
                 newApi.init()
                 allFiles = newApi.getFileSystem()
                 isConnected = true
+                loadShareData()
                 startPolling()
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -228,6 +239,7 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
         moveCopyItems = emptySet()
         activePage = "drive"
         isVerified = false
+        shareLinks = emptyList()
     }
 
     fun refresh(silent: Boolean = false) {
@@ -235,7 +247,64 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
             if (!silent) isLoading = true
             api?.syncMetadata()
             allFiles = api?.getFileSystem(filterCloudSave = activePage != "cloud-save") ?: emptyList()
+            if (activePage == "shared") loadShareData()
             if (!silent) isLoading = false
+        }
+    }
+
+    // --- Sharing Methods ---
+
+    suspend fun loadShareData() {
+        api?.let { disbox ->
+            val settings = disbox.getShareSettings()
+            shareEnabled = settings.enabled
+            shareMode = settings.mode
+            cfWorkerUrl = settings.cf_worker_url ?: DisboxApi.PUBLIC_WORKER_URL
+            shareLinks = disbox.getShareLinks()
+        }
+    }
+
+    fun saveShareSettings(enabled: Boolean, mode: String, workerUrl: String) {
+        viewModelScope.launch {
+            api?.let { disbox ->
+                disbox.saveShareSettings(ShareSettings(disbox.hashedWebhook ?: "", mode, workerUrl, null, disbox.webhookUrl, enabled))
+                loadShareData()
+            }
+        }
+    }
+
+    fun createShareLink(filePath: String, fileId: String?, permission: String, expiresAt: Long?, onResult: (Map<String, Any>) -> Unit) {
+        viewModelScope.launch {
+            isLoading = true
+            try {
+                val result = api?.createShareLink(filePath, fileId, permission, expiresAt) ?: mapOf("ok" to false)
+                if (result["ok"] == true) {
+                    loadShareData()
+                }
+                onResult(result)
+            } finally {
+                isLoading = false
+            }
+        }
+    }
+
+    fun revokeShareLink(id: String, token: String) {
+        viewModelScope.launch {
+            isLoading = true
+            if (api?.revokeShareLink(id, token) == true) {
+                loadShareData()
+            }
+            isLoading = false
+        }
+    }
+
+    fun revokeAllLinks() {
+        viewModelScope.launch {
+            isLoading = true
+            if (api?.revokeAllLinks() == true) {
+                loadShareData()
+            }
+            isLoading = false
         }
     }
 
@@ -325,12 +394,20 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
     fun renamePath(oldPath: String, newName: String, id: String?) {
         viewModelScope.launch {
             isLoading = true
-            val parts = oldPath.split("/")
+            val normalizedOld = oldPath.trim('/')
+            val parts = normalizedOld.split("/")
             val newPath = if (parts.size > 1) {
                 parts.dropLast(1).joinToString("/") + "/$newName"
             } else newName
-            api?.renamePath(oldPath, newPath, id)
-            allFiles = api?.getFileSystem() ?: emptyList()
+            
+            val success = api?.renamePath(normalizedOld, newPath, id) ?: false
+            if (success) {
+                // If the renamed item is the current directory, update currentPath
+                if (currentPath.trim('/') == normalizedOld) {
+                    currentPath = if (newPath.startsWith("/")) newPath else "/$newPath"
+                }
+                allFiles = api?.getFileSystem() ?: emptyList()
+            }
             isLoading = false
         }
     }
