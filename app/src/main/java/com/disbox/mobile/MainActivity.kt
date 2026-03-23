@@ -999,7 +999,15 @@ fun DriveScreen(viewModel: DisboxViewModel, isLockedView: Boolean = false, isSta
             onClose = { showShareDialog = null }
         )
     }
-    if (previewFile != null) FilePreviewScreen(previewFile!!, viewModel) { previewFile = null }
+    if (previewFile != null) {
+        FilePreviewScreen(
+            file = previewFile!!,
+            allFiles = currentFiles,
+            viewModel = viewModel,
+            onFileChange = { previewFile = it },
+            onClose = { previewFile = null }
+        )
+    }
 }
 
 @Composable
@@ -1184,7 +1192,13 @@ fun SharedScreen(viewModel: DisboxViewModel) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun FilePreviewScreen(file: DisboxFile, viewModel: DisboxViewModel, onClose: () -> Unit) {
+fun FilePreviewScreen(
+    file: DisboxFile,
+    allFiles: List<DisboxFile> = emptyList(),
+    viewModel: DisboxViewModel,
+    onFileChange: (DisboxFile) -> Unit = {},
+    onClose: () -> Unit
+) {
     val name = file.path.split("/").last(); val context = LocalContext.current; var previewText by remember { mutableStateOf<String?>(null) }
     var previewImageFile by remember { mutableStateOf<File?>(null) }; var previewPdfFile by remember { mutableStateOf<File?>(null) }
     var previewVideoFile by remember { mutableStateOf<File?>(null) }
@@ -1193,6 +1207,17 @@ fun FilePreviewScreen(file: DisboxFile, viewModel: DisboxViewModel, onClose: () 
     val textExts = listOf("txt", "md", "json", "js", "py", "rs", "html", "css", "xml", "yml", "yaml", "sql", "sh", "env")
     val videoExts = listOf("mp4", "mkv", "mov", "avi", "webm")
     val ext = name.split(".").last().lowercase()
+
+    val navigatableFiles = remember(allFiles) {
+        allFiles.filter { f ->
+            val fExt = f.path.split(".").last().lowercase()
+            isImageFile(f.path.split("/").last()) || videoExts.contains(fExt)
+        }
+    }
+
+    val currentIndex = navigatableFiles.indexOfFirst { it.id == file.id }
+    val hasPrev = currentIndex > 0
+    val hasNext = currentIndex in 0 until navigatableFiles.lastIndex
 
     val exoPlayer = remember {
         ExoPlayer.Builder(context).build()
@@ -1203,25 +1228,53 @@ fun FilePreviewScreen(file: DisboxFile, viewModel: DisboxViewModel, onClose: () 
             exoPlayer.release()
         }
     }
-    
-    LaunchedEffect(file) {
-        isDownloadingPreview = true; errorMsg = null
+
+    LaunchedEffect(file.id) {
+        isDownloadingPreview = false
+        errorMsg = null
+        previewImageFile = null
+        previewPdfFile = null
+        previewVideoFile = null
+        previewText = null
+
         try {
-            val tempFile = File(context.cacheDir, "preview_$name")
-            when {
-                isImageFile(name) -> { viewModel.api?.downloadFile(file, tempFile) { }; previewImageFile = tempFile }
-                isPdfFile(name) -> { viewModel.api?.downloadFile(file, tempFile) { }; previewPdfFile = tempFile }
-                videoExts.contains(ext) -> { 
+            val cacheKey = "session_prev_${file.id}"
+            val tempFile = File(context.cacheDir, cacheKey)
+
+            suspend fun loadFileIfNeeded() {
+                if (!tempFile.exists() || tempFile.length() == 0L) {
+                    isDownloadingPreview = true
                     viewModel.api?.downloadFile(file, tempFile) { }
+                    isDownloadingPreview = false
+                }
+            }
+
+            when {
+                isImageFile(name) -> { 
+                    loadFileIfNeeded()
+                    previewImageFile = tempFile 
+                }
+                isPdfFile(name) -> { 
+                    loadFileIfNeeded()
+                    previewPdfFile = tempFile 
+                }
+                videoExts.contains(ext) -> { 
+                    loadFileIfNeeded()
                     previewVideoFile = tempFile
                     val mediaItem = MediaItem.fromUri(Uri.fromFile(tempFile))
                     exoPlayer.setMediaItem(mediaItem)
                     exoPlayer.prepare()
                     exoPlayer.playWhenReady = true
                 }
-                textExts.contains(ext) -> { viewModel.api?.downloadFile(file, tempFile) { }; previewText = tempFile.readText() }
+                textExts.contains(ext) -> { 
+                    loadFileIfNeeded()
+                    previewText = tempFile.readText() 
+                }
             }
-        } catch (e: Exception) { errorMsg = "Gagal memuat: ${e.message}" } finally { isDownloadingPreview = false }
+        } catch (e: Exception) { 
+            errorMsg = "Gagal memuat: ${e.message}" 
+            isDownloadingPreview = false
+        }
     }
 
     if (isFullscreen && previewVideoFile != null) {
@@ -1258,7 +1311,7 @@ fun FilePreviewScreen(file: DisboxFile, viewModel: DisboxViewModel, onClose: () 
                         if (!isFullscreen) {
                             VideoPlayer(exoPlayer)
                             IconButton(
-                                onClick = { isFullscreen = true }, 
+                                onClick = { isFullscreen = true },
                                 modifier = Modifier
                                     .align(Alignment.TopEnd)
                                     .padding(8.dp)
@@ -1271,11 +1324,52 @@ fun FilePreviewScreen(file: DisboxFile, viewModel: DisboxViewModel, onClose: () 
                 }
                 else if (previewText != null) Box(Modifier.verticalScroll(rememberScrollState()).padding(16.dp)) { Text(previewText!!, fontFamily = FontFamily.Monospace, fontSize = 12.sp) }
                 else Column(horizontalAlignment = Alignment.CenterHorizontally) { Text(getFileIcon(name), fontSize = 64.sp); Text(viewModel.t("no_preview"), color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)) }
+
+                if (hasPrev) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.CenterStart)
+                            .fillMaxHeight()
+                            .width(80.dp)
+                            .clickable { onFileChange(navigatableFiles[currentIndex - 1]) },
+                        contentAlignment = Alignment.CenterStart
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .padding(start = 8.dp)
+                                .size(40.dp)
+                                .background(Color.Black.copy(alpha = 0.3f), CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.ChevronLeft, contentDescription = "Previous", tint = Color.White)
+                        }
+                    }
+                }
+
+                if (hasNext) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.CenterEnd)
+                            .fillMaxHeight()
+                            .width(80.dp)
+                            .clickable { onFileChange(navigatableFiles[currentIndex + 1]) },
+                        contentAlignment = Alignment.CenterEnd
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .padding(end = 8.dp)
+                                .size(40.dp)
+                                .background(Color.Black.copy(alpha = 0.3f), CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.ChevronRight, contentDescription = "Next", tint = Color.White)
+                        }
+                    }
+                }
             }
         }
     }
 }
-
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun FolderItemGrid(name: String, path: String, viewModel: DisboxViewModel, onClick: () -> Unit) {
