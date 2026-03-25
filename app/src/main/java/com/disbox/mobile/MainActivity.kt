@@ -231,14 +231,17 @@ fun FileThumbnail(file: DisboxFile, viewModel: DisboxViewModel, modifier: Modifi
 fun MusicPlayerBar(exoPlayer: ExoPlayer, viewModel: DisboxViewModel) {
     val currentFile = viewModel.currentPlayingFile ?: return
     val name = currentFile.path.split("/").last()
+    var isSeeking by remember { mutableStateOf(false) }
+    var sliderValue by remember { mutableStateOf(0f) }
     
     LaunchedEffect(exoPlayer) {
         while (true) {
-            if (exoPlayer.isPlaying) {
+            if (exoPlayer.isPlaying && !isSeeking) {
                 viewModel.playbackPosition = exoPlayer.currentPosition
                 viewModel.playbackDuration = exoPlayer.duration.coerceAtLeast(0)
                 if (viewModel.playbackDuration > 0) {
                     viewModel.playbackProgress = viewModel.playbackPosition.toFloat() / viewModel.playbackDuration
+                    sliderValue = viewModel.playbackProgress
                 }
             }
             delay(500)
@@ -248,83 +251,116 @@ fun MusicPlayerBar(exoPlayer: ExoPlayer, viewModel: DisboxViewModel) {
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .height(72.dp)
-            .padding(horizontal = 8.dp, vertical = 4.dp),
+            .padding(horizontal = 12.dp, vertical = 6.dp),
         shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.primaryContainer,
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.95f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.1f)),
         tonalElevation = 8.dp
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(48.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)),
-                contentAlignment = Alignment.Center
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                FileThumbnail(currentFile, viewModel, Modifier.fillMaxSize())
-            }
-            
-            Spacer(modifier = Modifier.width(12.dp))
-            
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = name,
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                
-                Spacer(modifier = Modifier.height(4.dp))
-                
-                LinearProgressIndicator(
-                    progress = { viewModel.playbackProgress },
+                Box(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .height(4.dp)
-                        .clip(CircleShape),
-                    color = MaterialTheme.colorScheme.primary,
-                    trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
-                )
-            }
-            
-            Spacer(modifier = Modifier.width(8.dp))
-            
-            IconButton(onClick = {
-                if (exoPlayer.isPlaying) {
-                    exoPlayer.pause()
-                    viewModel.isPlaying = false
-                } else {
-                    exoPlayer.play()
-                    viewModel.isPlaying = true
+                        .size(40.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    FileThumbnail(currentFile, viewModel, Modifier.fillMaxSize())
                 }
-            }) {
-                Icon(
-                    imageVector = if (viewModel.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                    contentDescription = if (viewModel.isPlaying) "Pause" else "Play",
-                    tint = MaterialTheme.colorScheme.primary
-                )
-            }
+                
+                Spacer(modifier = Modifier.width(12.dp))
+                
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = name,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = "${formatTime(viewModel.playbackPosition)} / ${formatTime(viewModel.playbackDuration)}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                    )
+                }
+                
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = {
+                        viewModel.updateRepeatMode((viewModel.repeatMode + 1) % 3)
+                    }) {
+                        Icon(
+                            imageVector = when(viewModel.repeatMode) {
+                                1 -> Icons.Default.RepeatOne
+                                2 -> Icons.Default.Repeat
+                                else -> Icons.Default.Repeat
+                            },
+                            contentDescription = "Repeat",
+                            tint = if (viewModel.repeatMode > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
 
-            IconButton(onClick = {
-                exoPlayer.stop()
-                viewModel.currentPlayingFile = null
-                viewModel.isPlaying = false
-            }) {
-                Icon(
-                    imageVector = Icons.Default.Close,
-                    contentDescription = "Close",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                    IconButton(onClick = {
+                        if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play()
+                    }) {
+                        Icon(
+                            imageVector = if (viewModel.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                            contentDescription = if (viewModel.isPlaying) "Pause" else "Play",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
+
+                    IconButton(onClick = {
+                        exoPlayer.stop()
+                        viewModel.currentPlayingFile = null
+                    }) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Close",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
             }
+            
+            Spacer(modifier = Modifier.height(4.dp))
+            
+            Slider(
+                value = if (isSeeking) sliderValue else viewModel.playbackProgress,
+                onValueChange = {
+                    isSeeking = true
+                    sliderValue = it
+                },
+                onValueChangeFinished = {
+                    val targetPos = (sliderValue * exoPlayer.duration).toLong()
+                    exoPlayer.seekTo(targetPos)
+                    isSeeking = false
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(24.dp),
+                colors = SliderDefaults.colors(
+                    thumbColor = MaterialTheme.colorScheme.primary,
+                    activeTrackColor = MaterialTheme.colorScheme.primary,
+                    inactiveTrackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
+                )
+            )
         }
     }
+}
+
+fun formatTime(ms: Long): String {
+    val totalSeconds = ms / 1000
+    val minutes = totalSeconds / 60
+    val seconds = totalSeconds % 60
+    return "%d:%02d".format(minutes, seconds)
 }
 
 @Composable
@@ -410,12 +446,37 @@ fun DisboxApp(viewModel: DisboxViewModel, onFinish: () -> Unit) {
             else -> onFinish()
         }
     }
-    DisboxMobileTheme(darkTheme = viewModel.theme == "dark") {
+    DisboxMobileTheme(darkTheme = viewModel.theme == "dark", accentColor = viewModel.accentColor) {
         val context = LocalContext.current
         val musicPlayer = remember { ExoPlayer.Builder(context).build() }
         
         DisposableEffect(musicPlayer) {
             onDispose { musicPlayer.release() }
+        }
+
+        LaunchedEffect(musicPlayer) {
+            musicPlayer.addListener(object : androidx.media3.common.Player.Listener {
+                override fun onIsPlayingChanged(isPlaying: Boolean) {
+                    viewModel.isPlaying = isPlaying
+                }
+                override fun onPlaybackStateChanged(state: Int) {
+                    if (state == androidx.media3.common.Player.STATE_ENDED) {
+                        when (viewModel.repeatMode) {
+                            1 -> { // Repeat One
+                                musicPlayer.seekTo(0)
+                                musicPlayer.play()
+                            }
+                            2 -> { // Repeat All (for mobile, usually same as one if only one file, but let's just repeat for now)
+                                musicPlayer.seekTo(0)
+                                musicPlayer.play()
+                            }
+                            else -> {
+                                viewModel.currentPlayingFile = null
+                            }
+                        }
+                    }
+                }
+            })
         }
 
         LaunchedEffect(viewModel.currentPlayingFile) {
@@ -431,11 +492,9 @@ fun DisboxApp(viewModel: DisboxViewModel, onFinish: () -> Unit) {
                     musicPlayer.setMediaSource(mediaSource)
                     musicPlayer.prepare()
                     musicPlayer.playWhenReady = true
-                    viewModel.isPlaying = true
                 }
             } else {
                 musicPlayer.stop()
-                viewModel.isPlaying = false
             }
         }
 
@@ -1748,6 +1807,25 @@ fun SettingsScreen(viewModel: DisboxViewModel) {
                             modifier = Modifier.weight(1f),
                             contentPadding = PaddingValues(0.dp)
                         ) { Text(label) }
+                    }
+                }
+            }
+        }
+
+        Card(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+            Column(Modifier.padding(20.dp)) {
+                Text(viewModel.t("accent_color"), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(bottom = 12.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    listOf("#5865F2", "#00D4AA", "#F0A500", "#ED4245", "#EB459E", "#9B59B6").forEach { colorHex ->
+                        val color = Color(android.graphics.Color.parseColor(colorHex))
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(CircleShape)
+                                .background(color)
+                                .border(2.dp, if(viewModel.accentColor == colorHex) MaterialTheme.colorScheme.onSurface else Color.Transparent, CircleShape)
+                                .clickable { viewModel.updateAccentColor(colorHex) }
+                        )
                     }
                 }
             }

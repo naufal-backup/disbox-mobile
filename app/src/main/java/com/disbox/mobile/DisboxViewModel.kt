@@ -34,8 +34,14 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
     var selectionSet by mutableStateOf<Set<String>>(emptySet())
 
     var theme by mutableStateOf(prefs.getString("theme", "dark") ?: "dark")
+    var accentColor by mutableStateOf(prefs.getString("accent_color", "#5865F2") ?: "#5865F2")
     var language by mutableStateOf(prefs.getString("language", "id") ?: "id")
     var sortMode by mutableStateOf(prefs.getString("sort_mode", "name") ?: "name")
+
+    fun updateAccentColor(color: String) {
+        accentColor = color
+        prefs.edit().putString("accent_color", color).apply()
+    }
     
     fun updateLanguage(lang: String) {
         language = lang
@@ -64,9 +70,15 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
     // --- Music Player States ---
     var currentPlayingFile by mutableStateOf<DisboxFile?>(null)
     var isPlaying by mutableStateOf(false)
+    var repeatMode by mutableStateOf(prefs.getInt("repeat_mode", 0)) // 0: none, 1: one, 2: all
     var playbackProgress by mutableStateOf(0f)
     var playbackDuration by mutableStateOf(0L)
     var playbackPosition by mutableStateOf(0L)
+
+    fun updateRepeatMode(mode: Int) {
+        repeatMode = mode
+        prefs.edit().putInt("repeat_mode", mode).apply()
+    }
 
     fun updatePreviews(show: Boolean) {
         showPreviews = show

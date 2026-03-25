@@ -54,16 +54,19 @@ private val LightColorScheme = lightColorScheme(
 @Composable
 fun DisboxMobileTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
+    accentColor: String = "#5865F2",
     dynamicColor: Boolean = false, // Disabled to match Linux aesthetics
     content: @Composable () -> Unit
 ) {
+    val customAccent = try { Color(android.graphics.Color.parseColor(accentColor)) } catch(e: Exception) { Color(0xFF5865F2) }
+    
     val colorScheme = when {
         dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
             val context = LocalContext.current
             if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
         }
-        darkTheme -> DarkColorScheme
-        else -> LightColorScheme
+        darkTheme -> DarkColorScheme.copy(primary = customAccent)
+        else -> LightColorScheme.copy(primary = customAccent)
     }
     val view = LocalView.current
     if (!view.isInEditMode) {
