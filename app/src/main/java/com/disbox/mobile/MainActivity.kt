@@ -59,6 +59,7 @@ import coil.compose.AsyncImage
 import coil.decode.VideoFrameDecoder
 import coil.request.ImageRequest
 import com.disbox.mobile.ui.theme.DisboxMobileTheme
+import kotlinx.coroutines.delay
 import java.io.File
 import java.util.UUID
 
