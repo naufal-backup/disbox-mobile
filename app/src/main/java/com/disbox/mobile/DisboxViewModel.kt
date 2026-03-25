@@ -487,6 +487,24 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
         uploadFiles(listOf(uri))
     }
 
+    suspend fun streamFile(file: DisboxFile, destFile: File, onProgress: (Float) -> Unit) {
+        val api = api ?: return
+        val totalChunks = file.messageIds.size
+        if (totalChunks == 0) return
+
+        // 1. Load first 10%
+        val first10Percent = (totalChunks * 0.1).toInt().coerceAtLeast(1)
+        api.downloadFilePartial(file, destFile, 0, first10Percent, onProgress)
+
+        // 2. Load rest in 10% increments
+        var currentChunk = first10Percent
+        while (currentChunk < totalChunks) {
+            val nextEnd = (currentChunk + (totalChunks * 0.1).toInt().coerceAtLeast(1)).coerceAtMost(totalChunks)
+            api.downloadFilePartial(file, destFile, currentChunk, nextEnd, onProgress)
+            currentChunk = nextEnd
+        }
+    }
+
     fun downloadFile(file: DisboxFile) {
         viewModelScope.launch {
             val name = file.path.split("/").last()

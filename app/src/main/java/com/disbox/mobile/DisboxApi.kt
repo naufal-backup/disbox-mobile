@@ -836,10 +836,25 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
         messageIds
     }
 
-    suspend fun downloadFile(file: DisboxFile, destFile: File, onProgress: (Float) -> Unit) = withContext(Dispatchers.IO) {
+    suspend fun downloadFile(file: DisboxFile, destFile: File, onProgress: (Float) -> Unit) {
+        downloadFilePartial(file, destFile, 0, file.messageIds.size, onProgress)
+    }
+
+    suspend fun downloadFilePartial(
+        file: DisboxFile, 
+        destFile: File, 
+        startIndex: Int, 
+        endIndex: Int, 
+        onProgress: (Float) -> Unit
+    ) = withContext(Dispatchers.IO) {
         val messageIds = file.messageIds
-        FileOutputStream(destFile).use { out ->
-            for (i in messageIds.indices) {
+        val actualEndIndex = endIndex.coerceAtMost(messageIds.size)
+        
+        // Use append mode if we're not starting from 0
+        val out = FileOutputStream(destFile, startIndex > 0)
+        out.use { stream ->
+            for (i in startIndex until actualEndIndex) {
+                kotlinx.coroutines.yield()
                 val msgUrl = "$baseUrl/messages/${messageIds[i]}"
                 val msgRes = client.newCall(Request.Builder().url(msgUrl).build()).execute()
                 if (!msgRes.isSuccessful) throw Exception("Failed to fetch msg ${messageIds[i]}")
@@ -851,7 +866,7 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
                 if (!chunkRes.isSuccessful) throw Exception("Failed to download chunk")
                 var chunkData = chunkRes.body?.bytes() ?: throw Exception("Empty chunk body")
                 chunkData = encryptionKey?.let { CryptoUtils.decrypt(chunkData, it) } ?: chunkData
-                out.write(chunkData)
+                stream.write(chunkData)
                 onProgress((i + 1).toFloat() / messageIds.size)
             }
         }

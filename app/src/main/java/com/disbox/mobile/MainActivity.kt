@@ -1311,23 +1311,53 @@ fun MediaPreviewItem(file: DisboxFile, viewModel: DisboxViewModel) {
         try {
             val cacheKey = "session_prev_${file.id}"
             val tempFile = File(context.cacheDir, cacheKey)
+            val isMedia = videoExts.contains(ext) || ext == "mp3" || ext == "wav" || ext == "flac" || ext == "ogg"
 
             if (!tempFile.exists() || tempFile.length() == 0L) {
                 isDownloadingPreview = true
-                viewModel.api?.downloadFile(file, tempFile) { }
-                isDownloadingPreview = false
+                val totalChunks = file.messageIds.size
+                
+                if (isMedia && totalChunks > 1) {
+                    // 1. Load first chunk ONLY for instant play
+                    viewModel.api?.downloadFilePartial(file, tempFile, 0, 1) { }
+                    isDownloadingPreview = false
+                    
+                    // 2. Start Playing if it's video
+                    if (videoExts.contains(ext)) {
+                        previewVideoFile = tempFile
+                        val mediaItem = MediaItem.fromUri(Uri.fromFile(tempFile))
+                        exoPlayer.setMediaItem(mediaItem)
+                        exoPlayer.prepare()
+                        exoPlayer.playWhenReady = true
+                    } else if (ext == "mp3" || ext == "wav" || ext == "flac" || ext == "ogg") {
+                        val mediaItem = MediaItem.fromUri(Uri.fromFile(tempFile))
+                        exoPlayer.setMediaItem(mediaItem)
+                        exoPlayer.prepare()
+                        exoPlayer.playWhenReady = true
+                    }
+                    
+                    // 3. Load rest chunk by chunk for progressive growth
+                    for (i in 1 until totalChunks) {
+                        viewModel.api?.downloadFilePartial(file, tempFile, i, i + 1) { }
+                    }
+                } else {
+                    viewModel.api?.downloadFile(file, tempFile) { }
+                    isDownloadingPreview = false
+                }
             }
 
             if (tempFile.exists()) {
                 when {
                     isImageFile(name) -> { previewImageFile = tempFile }
                     isPdfFile(name) -> { previewPdfFile = tempFile }
-                    videoExts.contains(ext) -> {
-                        previewVideoFile = tempFile
-                        val mediaItem = MediaItem.fromUri(Uri.fromFile(tempFile))
-                        exoPlayer.setMediaItem(mediaItem)
-                        exoPlayer.prepare()
-                        exoPlayer.playWhenReady = true
+                    videoExts.contains(ext) || ext == "mp3" || ext == "wav" || ext == "flac" || ext == "ogg" -> {
+                        if (previewVideoFile == null) {
+                            previewVideoFile = tempFile
+                            val mediaItem = MediaItem.fromUri(Uri.fromFile(tempFile))
+                            exoPlayer.setMediaItem(mediaItem)
+                            exoPlayer.prepare()
+                            exoPlayer.playWhenReady = true
+                        }
                     }
                     textExts.contains(ext) -> { previewText = tempFile.readText() }
                 }
