@@ -1340,7 +1340,7 @@ fun MediaPreviewItem(file: DisboxFile, viewModel: DisboxViewModel, isActive: Boo
                 if (api != null) {
                     val dataSourceFactory = DiscordDataSourceFactory(api, file)
                     val mediaSource = androidx.media3.exoplayer.source.ProgressiveMediaSource.Factory(dataSourceFactory)
-                        .createMediaSource(MediaItem.fromUri("disbox-stream://${file.id}"))
+                        .createMediaSource(MediaItem.fromUri("disbox-stream://${file.id}.$ext"))
                     exoPlayer.setMediaSource(mediaSource)
                     exoPlayer.prepare()
                     exoPlayer.playWhenReady = true
