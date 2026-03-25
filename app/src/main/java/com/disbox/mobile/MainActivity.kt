@@ -1190,7 +1190,7 @@ fun SharedScreen(viewModel: DisboxViewModel) {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun FilePreviewScreen(
     file: DisboxFile,
@@ -1199,25 +1199,96 @@ fun FilePreviewScreen(
     onFileChange: (DisboxFile) -> Unit = {},
     onClose: () -> Unit
 ) {
-    val name = file.path.split("/").last(); val context = LocalContext.current; var previewText by remember { mutableStateOf<String?>(null) }
-    var previewImageFile by remember { mutableStateOf<File?>(null) }; var previewPdfFile by remember { mutableStateOf<File?>(null) }
-    var previewVideoFile by remember { mutableStateOf<File?>(null) }
-    var isDownloadingPreview by remember { mutableStateOf(false) }; var errorMsg by remember { mutableStateOf<String?>(null) }
-    var isFullscreen by remember { mutableStateOf(false) }
-    val textExts = listOf("txt", "md", "json", "js", "py", "rs", "html", "css", "xml", "yml", "yaml", "sql", "sh", "env")
+    val context = LocalContext.current
     val videoExts = listOf("mp4", "mkv", "mov", "avi", "webm")
-    val ext = name.split(".").last().lowercase()
+    val textExts = listOf("txt", "md", "json", "js", "py", "rs", "html", "css", "xml", "yml", "yaml", "sql", "sh", "env")
 
     val navigatableFiles = remember(allFiles) {
         allFiles.filter { f ->
-            val fExt = f.path.split(".").last().lowercase()
-            isImageFile(f.path.split("/").last()) || videoExts.contains(fExt)
+            val name = f.path.split("/").last()
+            val fExt = name.split(".").last().lowercase()
+            isImageFile(name) || videoExts.contains(fExt) || textExts.contains(fExt) || isPdfFile(name)
         }
     }
 
-    val currentIndex = navigatableFiles.indexOfFirst { it.id == file.id }
-    val hasPrev = currentIndex > 0
-    val hasNext = currentIndex in 0 until navigatableFiles.lastIndex
+    val initialIndex = navigatableFiles.indexOfFirst { it.id == file.id }.coerceAtLeast(0)
+    val pagerState = androidx.compose.foundation.pager.rememberPagerState(initialPage = initialIndex) {
+        navigatableFiles.size
+    }
+
+    LaunchedEffect(pagerState.currentPage) {
+        onFileChange(navigatableFiles[pagerState.currentPage])
+    }
+
+    BackHandler(onBack = onClose)
+
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = Color.Black
+    ) {
+        Box(Modifier.fillMaxSize()) {
+            androidx.compose.foundation.pager.HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.fillMaxSize(),
+                pageSpacing = 16.dp,
+                userScrollEnabled = true
+            ) { pageIndex ->
+                val currentFile = navigatableFiles[pageIndex]
+                MediaPreviewItem(currentFile, viewModel)
+            }
+
+            // Top Bar
+            val currentFile = navigatableFiles.getOrNull(pagerState.currentPage) ?: file
+            val name = currentFile.path.split("/").last()
+            
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color.Black.copy(alpha = 0.4f))
+                    .padding(horizontal = 8.dp, vertical = 12.dp)
+                    .align(Alignment.TopCenter),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = onClose) {
+                    Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White)
+                }
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        name,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        fontSize = 16.sp
+                    )
+                    Text(
+                        "${currentFile.size / 1024} KB",
+                        fontSize = 12.sp,
+                        color = Color.White.copy(alpha = 0.7f)
+                    )
+                }
+                IconButton(onClick = { viewModel.downloadFile(currentFile) }) {
+                    Icon(Icons.Default.Download, contentDescription = "Download", tint = Color.White)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun MediaPreviewItem(file: DisboxFile, viewModel: DisboxViewModel) {
+    val name = file.path.split("/").last()
+    val context = LocalContext.current
+    var previewText by remember { mutableStateOf<String?>(null) }
+    var previewImageFile by remember { mutableStateOf<File?>(null) }
+    var previewPdfFile by remember { mutableStateOf<File?>(null) }
+    var previewVideoFile by remember { mutableStateOf<File?>(null) }
+    var isDownloadingPreview by remember { mutableStateOf(false) }
+    var errorMsg by remember { mutableStateOf<String?>(null) }
+    
+    val videoExts = listOf("mp4", "mkv", "mov", "avi", "webm")
+    val textExts = listOf("txt", "md", "json", "js", "py", "rs", "html", "css", "xml", "yml", "yaml", "sql", "sh", "env")
+    val ext = name.split(".").last().lowercase()
 
     val exoPlayer = remember {
         ExoPlayer.Builder(context).build()
@@ -1241,135 +1312,74 @@ fun FilePreviewScreen(
             val cacheKey = "session_prev_${file.id}"
             val tempFile = File(context.cacheDir, cacheKey)
 
-            suspend fun loadFileIfNeeded() {
-                if (!tempFile.exists() || tempFile.length() == 0L) {
-                    isDownloadingPreview = true
-                    viewModel.api?.downloadFile(file, tempFile) { }
-                    isDownloadingPreview = false
-                }
+            if (!tempFile.exists() || tempFile.length() == 0L) {
+                isDownloadingPreview = true
+                viewModel.api?.downloadFile(file, tempFile) { }
+                isDownloadingPreview = false
             }
 
-            when {
-                isImageFile(name) -> { 
-                    loadFileIfNeeded()
-                    previewImageFile = tempFile 
-                }
-                isPdfFile(name) -> { 
-                    loadFileIfNeeded()
-                    previewPdfFile = tempFile 
-                }
-                videoExts.contains(ext) -> { 
-                    loadFileIfNeeded()
-                    previewVideoFile = tempFile
-                    val mediaItem = MediaItem.fromUri(Uri.fromFile(tempFile))
-                    exoPlayer.setMediaItem(mediaItem)
-                    exoPlayer.prepare()
-                    exoPlayer.playWhenReady = true
-                }
-                textExts.contains(ext) -> { 
-                    loadFileIfNeeded()
-                    previewText = tempFile.readText() 
+            if (tempFile.exists()) {
+                when {
+                    isImageFile(name) -> { previewImageFile = tempFile }
+                    isPdfFile(name) -> { previewPdfFile = tempFile }
+                    videoExts.contains(ext) -> {
+                        previewVideoFile = tempFile
+                        val mediaItem = MediaItem.fromUri(Uri.fromFile(tempFile))
+                        exoPlayer.setMediaItem(mediaItem)
+                        exoPlayer.prepare()
+                        exoPlayer.playWhenReady = true
+                    }
+                    textExts.contains(ext) -> { previewText = tempFile.readText() }
                 }
             }
-        } catch (e: Exception) { 
-            errorMsg = "Gagal memuat: ${e.message}" 
+        } catch (e: Exception) {
+            errorMsg = "Gagal memuat: ${e.message}"
             isDownloadingPreview = false
         }
     }
 
-    if (isFullscreen && previewVideoFile != null) {
-        Dialog(onDismissRequest = { isFullscreen = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-            Box(Modifier.fillMaxSize().background(Color.Black), Alignment.Center) {
-                VideoPlayer(exoPlayer, isFullscreen = true)
-                IconButton(onClick = { isFullscreen = false }, modifier = Modifier.align(Alignment.TopEnd).padding(16.dp)) {
-                    Icon(Icons.Default.Close, null, tint = Color.White)
-                }
+    Box(Modifier.fillMaxSize(), Alignment.Center) {
+        if (isDownloadingPreview) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                CircularProgressIndicator(color = Color.White)
+                Spacer(Modifier.height(16.dp))
+                Text(viewModel.t("downloading_preview"), fontSize = 12.sp, color = Color.White.copy(0.7f))
             }
-        }
-    }
-
-    ModalBottomSheet(onDismissRequest = onClose, dragHandle = null) {
-        Column(Modifier.fillMaxWidth().fillMaxHeight(0.9f).padding(24.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onClose) { Icon(Icons.Default.Close, contentDescription = null) }
-                Column(Modifier.weight(1f)) { Text(name, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis); Text("${file.size / 1024} KB", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface.copy(0.6f)) }
-                Button(onClick = { viewModel.downloadFile(file); onClose() }) { Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text(viewModel.t("download")) }
+        } else if (errorMsg != null) {
+            Text(errorMsg!!, color = MaterialTheme.colorScheme.error)
+        } else if (previewImageFile != null) {
+            AsyncImage(
+                model = ImageRequest.Builder(context).data(previewImageFile).build(),
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = androidx.compose.ui.layout.ContentScale.Fit
+            )
+        } else if (previewVideoFile != null) {
+            VideoPlayer(exoPlayer, isFullscreen = true)
+        } else if (previewText != null) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .background(Color.White)
+                    .padding(16.dp)
+            ) {
+                Text(
+                    previewText!!,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 12.sp,
+                    color = Color.Black
+                )
             }
-            Spacer(Modifier.height(16.dp))
-            Box(Modifier.fillMaxSize().clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.background), Alignment.Center) {
-                if (isDownloadingPreview) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        CircularProgressIndicator()
-                        Spacer(Modifier.height(16.dp))
-                        Text(viewModel.t("downloading_preview"), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface.copy(0.6f))
-                    }
-                }
-                else if (errorMsg != null) Text(errorMsg!!, color = MaterialTheme.colorScheme.error)
-                else if (previewImageFile != null) AsyncImage(ImageRequest.Builder(context).data(previewImageFile).build(), contentDescription = null, modifier = Modifier.fillMaxSize())
-                else if (previewVideoFile != null) {
-                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                        if (!isFullscreen) {
-                            VideoPlayer(exoPlayer)
-                            IconButton(
-                                onClick = { isFullscreen = true },
-                                modifier = Modifier
-                                    .align(Alignment.TopEnd)
-                                    .padding(8.dp)
-                                    .background(Color.Black.copy(alpha = 0.5f), CircleShape)
-                            ) {
-                                Icon(Icons.Default.Fullscreen, null, tint = Color.White)
-                            }
-                        }
-                    }
-                }
-                else if (previewText != null) Box(Modifier.verticalScroll(rememberScrollState()).padding(16.dp)) { Text(previewText!!, fontFamily = FontFamily.Monospace, fontSize = 12.sp) }
-                else Column(horizontalAlignment = Alignment.CenterHorizontally) { Text(getFileIcon(name), fontSize = 64.sp); Text(viewModel.t("no_preview"), color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)) }
-
-                if (hasPrev) {
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.CenterStart)
-                            .fillMaxHeight()
-                            .width(80.dp)
-                            .clickable { onFileChange(navigatableFiles[currentIndex - 1]) },
-                        contentAlignment = Alignment.CenterStart
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .padding(start = 8.dp)
-                                .size(40.dp)
-                                .background(Color.Black.copy(alpha = 0.3f), CircleShape),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(Icons.Default.ChevronLeft, contentDescription = "Previous", tint = Color.White)
-                        }
-                    }
-                }
-
-                if (hasNext) {
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.CenterEnd)
-                            .fillMaxHeight()
-                            .width(80.dp)
-                            .clickable { onFileChange(navigatableFiles[currentIndex + 1]) },
-                        contentAlignment = Alignment.CenterEnd
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .padding(end = 8.dp)
-                                .size(40.dp)
-                                .background(Color.Black.copy(alpha = 0.3f), CircleShape),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(Icons.Default.ChevronRight, contentDescription = "Next", tint = Color.White)
-                        }
-                    }
-                }
+        } else {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(getFileIcon(name), fontSize = 64.sp)
+                Text(viewModel.t("no_preview"), color = Color.White.copy(alpha = 0.6f))
             }
         }
     }
 }
+
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun FolderItemGrid(name: String, path: String, viewModel: DisboxViewModel, onClick: () -> Unit) {
