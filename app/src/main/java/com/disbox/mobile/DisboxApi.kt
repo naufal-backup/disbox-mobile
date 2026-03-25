@@ -429,12 +429,12 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
     // --- Sharing Methods ---
 
     suspend fun getShareSettings(): ShareSettings = withContext(Dispatchers.IO) {
-        val currentHash = hashedWebhook ?: return@withContext ShareSettings("", enabled = true, cf_worker_url = null, cf_api_token = null, webhook_url = null)
+        val currentHash = hashedWebhook ?: return@withContext ShareSettings("", enabled = false, cf_worker_url = null, cf_api_token = null, webhook_url = null)
         val row = shareSettingsDao.getSettings(currentHash)
         if (row != null) {
             ShareSettings(row.hash, row.mode, row.cf_worker_url, row.cf_api_token, row.webhook_url, row.enabled == 1)
         } else {
-            ShareSettings(currentHash, "public", PUBLIC_WORKER_URL, null, webhookUrl, true)
+            ShareSettings(currentHash, "public", PUBLIC_WORKER_URL, null, webhookUrl, false)
         }
     }
 

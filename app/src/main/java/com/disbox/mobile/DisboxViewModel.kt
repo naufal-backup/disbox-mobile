@@ -53,8 +53,8 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
     var showPreviews by mutableStateOf(prefs.getBoolean("show_previews", true))
     var showImagePreviews by mutableStateOf(prefs.getBoolean("show_image_previews", true))
     var showVideoPreviews by mutableStateOf(prefs.getBoolean("show_video_previews", true))
-    var showRecent by mutableStateOf(prefs.getBoolean("show_recent", true))
-    var cloudSaveEnabled by mutableStateOf(prefs.getBoolean("cloud_save_enabled", true))
+    var showRecent by mutableStateOf(prefs.getBoolean("show_recent", false))
+    var cloudSaveEnabled by mutableStateOf(prefs.getBoolean("cloud_save_enabled", false))
     var animationsEnabled by mutableStateOf(prefs.getBoolean("animations_enabled", true))
 
     fun updatePreviews(show: Boolean) {
@@ -91,7 +91,7 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
     var moveCopyItems by mutableStateOf<Set<String>>(emptySet())
 
     // --- Sharing States ---
-    var shareEnabled by mutableStateOf(true)
+    var shareEnabled by mutableStateOf(false)
     var shareMode by mutableStateOf("public")
     var cfWorkerUrl by mutableStateOf("")
     var shareLinks by mutableStateOf<List<ShareLink>>(emptyList())

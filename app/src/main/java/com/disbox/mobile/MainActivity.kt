@@ -860,7 +860,6 @@ fun DriveScreen(viewModel: DisboxViewModel, isLockedView: Boolean = false, isSta
                         IconButton(onClick = { viewModel.setView(if (viewModel.viewMode == "grid") "list" else "grid") }) { 
                             Icon(if (viewModel.viewMode == "grid") Icons.Default.List else Icons.Default.GridView, null) 
                         }
-                        IconButton(onClick = { viewModel.refresh() }) { Icon(Icons.Default.Refresh, null) }
                     }
                 }
                 
@@ -915,8 +914,12 @@ fun DriveScreen(viewModel: DisboxViewModel, isLockedView: Boolean = false, isSta
                 }
             }
         }
-    ) { padding ->
-        Box(Modifier.padding(padding).fillMaxSize()) {
+    } { padding ->
+        PullToRefreshBox(
+            isRefreshing = viewModel.isLoading,
+            onRefresh = { viewModel.refresh() },
+            modifier = Modifier.padding(padding).fillMaxSize()
+        ) {
             if (folders.isEmpty() && currentFiles.isEmpty()) {
                 Box(Modifier.fillMaxSize(), Alignment.Center) { Text(viewModel.t("empty_folder"), color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)) }
             } else if (viewModel.viewMode == "grid") {
@@ -948,19 +951,20 @@ fun DriveScreen(viewModel: DisboxViewModel, isLockedView: Boolean = false, isSta
                     } }
                 }
             }
-            if (pinPrompt != null) PinPromptModal(viewModel.t("locked_area"), { val a = pinPrompt; pinPrompt = null; a?.invoke() }, { pinPrompt = null }, viewModel)
-            
-            if (showFolderPickerForUnlock) {
-                FolderSelectionDialog(
-                    allFiles = viewModel.allFiles,
-                    viewModel = viewModel,
-                    onFolderSelected = { dest ->
-                        viewModel.unlockTo(viewModel.selectionSet, dest)
-                        showFolderPickerForUnlock = false
-                    },
-                    onDismiss = { showFolderPickerForUnlock = false }
-                )
-            }
+        }
+        
+        if (pinPrompt != null) PinPromptModal(viewModel.t("locked_area"), { val a = pinPrompt; pinPrompt = null; a?.invoke() }, { pinPrompt = null }, viewModel)
+        
+        if (showFolderPickerForUnlock) {
+            FolderSelectionDialog(
+                allFiles = viewModel.allFiles,
+                viewModel = viewModel,
+                onFolderSelected = { dest ->
+                    viewModel.unlockTo(viewModel.selectionSet, dest)
+                    showFolderPickerForUnlock = false
+                },
+                onDismiss = { showFolderPickerForUnlock = false }
+            )
         }
     }
     if (showCreateFolderDialog) {
@@ -1222,6 +1226,8 @@ fun FilePreviewScreen(
 
     BackHandler(onBack = onClose)
 
+    var showShareDialogByPreview by remember { mutableStateOf<Pair<String, String?>?>(null) }
+
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = Color.Black
@@ -1230,7 +1236,7 @@ fun FilePreviewScreen(
             androidx.compose.foundation.pager.HorizontalPager(
                 state = pagerState,
                 modifier = Modifier.fillMaxSize(),
-                pageSpacing = 16.dp,
+                pageSpacing = 0.dp,
                 userScrollEnabled = true
             ) { pageIndex ->
                 val currentFile = navigatableFiles[pageIndex]
@@ -1245,13 +1251,13 @@ fun FilePreviewScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(Color.Black.copy(alpha = 0.4f))
-                    .padding(horizontal = 8.dp, vertical = 12.dp)
+                    .background(Color.Black.copy(alpha = 0.5f))
+                    .padding(horizontal = 4.dp, vertical = 8.dp)
                     .align(Alignment.TopCenter),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 IconButton(onClick = onClose) {
-                    Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White)
+                    Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
                 }
                 Column(Modifier.weight(1f)) {
                     Text(
@@ -1260,19 +1266,33 @@ fun FilePreviewScreen(
                         color = Color.White,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        fontSize = 16.sp
+                        fontSize = 14.sp
                     )
                     Text(
                         "${currentFile.size / 1024} KB",
-                        fontSize = 12.sp,
-                        color = Color.White.copy(alpha = 0.7f)
+                        fontSize = 10.sp,
+                        color = Color.White.copy(alpha = 0.6f)
                     )
                 }
+                if (viewModel.shareEnabled) {
+                    IconButton(onClick = { showShareDialogByPreview = currentFile.path to currentFile.id }) {
+                        Icon(Icons.Default.Share, contentDescription = "Share", tint = Color.White, modifier = Modifier.size(20.dp))
+                    }
+                }
                 IconButton(onClick = { viewModel.downloadFile(currentFile) }) {
-                    Icon(Icons.Default.Download, contentDescription = "Download", tint = Color.White)
+                    Icon(Icons.Default.Download, contentDescription = "Download", tint = Color.White, modifier = Modifier.size(20.dp))
                 }
             }
         }
+    }
+
+    if (showShareDialogByPreview != null) {
+        ShareDialog(
+            filePath = showShareDialogByPreview!!.first,
+            fileId = showShareDialogByPreview!!.second,
+            viewModel = viewModel,
+            onClose = { showShareDialogByPreview = null }
+        )
     }
 }
 
