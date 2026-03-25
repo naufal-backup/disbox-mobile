@@ -276,7 +276,6 @@ fun BreadcrumbBar(currentPath: String, onNavigate: (String) -> Unit) {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DisboxApp(viewModel: DisboxViewModel, onFinish: () -> Unit) {
     val allTabIds = listOf("drive", "recent", "starred", "locked", "cloud-save", "shared", "settings")
@@ -1193,7 +1192,7 @@ fun SharedScreen(viewModel: DisboxViewModel) {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun FilePreviewScreen(
     file: DisboxFile,
