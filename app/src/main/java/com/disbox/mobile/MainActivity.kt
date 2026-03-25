@@ -1238,7 +1238,8 @@ fun FilePreviewScreen(
                 MediaPreviewItem(currentFile, viewModel, isActive)
             }
 
-            // Top Bar            val currentFile = navigatableFiles.getOrNull(pagerState.currentPage) ?: file
+            // Top Bar
+            val currentFile = navigatableFiles.getOrNull(pagerState.currentPage) ?: file
             val name = currentFile.path.split("/").last()
             
             Row(
