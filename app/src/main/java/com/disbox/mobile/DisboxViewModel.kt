@@ -20,6 +20,9 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
 
     var isConnected by mutableStateOf(false)
     var webhookUrl by mutableStateOf(prefs.getString("webhook_url", "") ?: "")
+    var savedWebhooks by mutableStateOf<List<String>>(
+        prefs.getStringSet("saved_webhooks", emptySet())?.toList() ?: emptyList()
+    )
     var api by mutableStateOf<DisboxApi?>(null)
     var allFiles by mutableStateOf<List<DisboxFile>>(emptyList())
     var currentPath by mutableStateOf("/")
@@ -182,6 +185,7 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
 
         webhookUrl = url
         prefs.edit().putString("webhook_url", url).apply()
+        addWebhook(url)
 
         val newApi = DisboxApi(getApplication(), url)
         newApi.chunkSize = chunkSize
@@ -202,6 +206,23 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
             } finally {
                 isLoading = false
             }
+        }
+    }
+
+    private fun addWebhook(url: String) {
+        if (!savedWebhooks.contains(url)) {
+            val newList = savedWebhooks.toMutableList().apply { add(url) }
+            savedWebhooks = newList
+            prefs.edit().putStringSet("saved_webhooks", newList.toSet()).apply()
+        }
+    }
+
+    fun removeWebhook(url: String) {
+        val newList = savedWebhooks.toMutableList().apply { remove(url) }
+        savedWebhooks = newList
+        prefs.edit().putStringSet("saved_webhooks", newList.toSet()).apply()
+        if (webhookUrl == url) {
+            disconnect()
         }
     }
 

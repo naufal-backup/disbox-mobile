@@ -726,7 +726,7 @@ fun PinPromptModal(title: String, onVerified: () -> Unit, onCancel: () -> Unit, 
 fun LoginScreen(viewModel: DisboxViewModel) {
     var url by remember { mutableStateOf(viewModel.webhookUrl) }
     Column(
-        modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(32.dp),
+        modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(32.dp).verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -735,6 +735,35 @@ fun LoginScreen(viewModel: DisboxViewModel) {
         }
         Spacer(Modifier.height(24.dp)); Text("Disbox", fontSize = 32.sp, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onBackground)
         Text(viewModel.t("subtitle"), fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+        
+        if (viewModel.savedWebhooks.isNotEmpty()) {
+            Spacer(Modifier.height(32.dp))
+            Text(viewModel.t("saved_webhooks_count", mapOf("count" to viewModel.savedWebhooks.size.toString())), 
+                fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, 
+                modifier = Modifier.align(Alignment.Start))
+            Spacer(Modifier.height(8.dp))
+            
+            viewModel.savedWebhooks.forEach { savedUrl ->
+                Card(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).combinedClickable(
+                        onClick = { url = savedUrl; viewModel.connect(savedUrl) },
+                        onLongClick = { viewModel.removeWebhook(savedUrl) }
+                    ),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                ) {
+                    Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Link, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(12.dp))
+                        Text(
+                            savedUrl.take(40) + if(savedUrl.length > 40) "..." else "", 
+                            fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            color = if(url == savedUrl) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+            }
+        }
+
         Spacer(Modifier.height(32.dp))
         OutlinedTextField(value = url, onValueChange = { url = it }, label = { Text(viewModel.t("webhook_url")) }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(10.dp))
         Spacer(Modifier.height(24.dp))
