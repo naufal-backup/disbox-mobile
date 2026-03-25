@@ -1334,51 +1334,31 @@ fun MediaPreviewItem(file: DisboxFile, viewModel: DisboxViewModel, isActive: Boo
             val tempFile = File(context.cacheDir, cacheKey)
             val isMedia = videoExts.contains(ext) || ext == "mp3" || ext == "wav" || ext == "flac" || ext == "ogg"
 
-            if (!tempFile.exists() || tempFile.length() == 0L) {
-                isDownloadingPreview = true
-                val totalChunks = file.messageIds.size
-                
-                if (isMedia && totalChunks > 1) {
-                    // 1. Load first chunk ONLY for instant play
-                    viewModel.api?.downloadFilePartial(file, tempFile, 0, 1) { }
-                    isDownloadingPreview = false
-                    
-                    // 2. Start Playing if it's video
-                    if (videoExts.contains(ext)) {
-                        previewVideoFile = tempFile
-                        val mediaItem = MediaItem.fromUri(Uri.fromFile(tempFile))
-                        exoPlayer.setMediaItem(mediaItem)
-                        exoPlayer.prepare()
-                        exoPlayer.playWhenReady = true
-                    } else if (ext == "mp3" || ext == "wav" || ext == "flac" || ext == "ogg") {
-                        val mediaItem = MediaItem.fromUri(Uri.fromFile(tempFile))
-                        exoPlayer.setMediaItem(mediaItem)
-                        exoPlayer.prepare()
-                        exoPlayer.playWhenReady = true
-                    }
-                    
-                    // 3. Load the rest in one go in the background
-                    viewModel.api?.downloadFilePartial(file, tempFile, 1, totalChunks) { }
-                } else {
+            if (isMedia) {
+                // Use custom DataSource for seamless streaming
+                val api = viewModel.api
+                if (api != null) {
+                    val dataSourceFactory = DiscordDataSourceFactory(api, file)
+                    val mediaSource = androidx.media3.exoplayer.source.ProgressiveMediaSource.Factory(dataSourceFactory)
+                        .createMediaSource(MediaItem.fromUri("disbox-stream://${file.id}"))
+                    exoPlayer.setMediaSource(mediaSource)
+                    exoPlayer.prepare()
+                    exoPlayer.playWhenReady = true
+                    previewVideoFile = File("stream") // Just to trigger the UI to show video player
+                }
+            } else {
+                if (!tempFile.exists() || tempFile.length() == 0L) {
+                    isDownloadingPreview = true
                     viewModel.api?.downloadFile(file, tempFile) { }
                     isDownloadingPreview = false
                 }
-            }
 
-            if (tempFile.exists()) {
-                when {
-                    isImageFile(name) -> { previewImageFile = tempFile }
-                    isPdfFile(name) -> { previewPdfFile = tempFile }
-                    videoExts.contains(ext) || ext == "mp3" || ext == "wav" || ext == "flac" || ext == "ogg" -> {
-                        if (previewVideoFile == null) {
-                            previewVideoFile = tempFile
-                            val mediaItem = MediaItem.fromUri(Uri.fromFile(tempFile))
-                            exoPlayer.setMediaItem(mediaItem)
-                            exoPlayer.prepare()
-                            exoPlayer.playWhenReady = true
-                        }
+                if (tempFile.exists()) {
+                    when {
+                        isImageFile(name) -> { previewImageFile = tempFile }
+                        isPdfFile(name) -> { previewPdfFile = tempFile }
+                        textExts.contains(ext) -> { previewText = tempFile.readText() }
                     }
-                    textExts.contains(ext) -> { previewText = tempFile.readText() }
                 }
             }
         } catch (e: Exception) {

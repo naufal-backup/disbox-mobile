@@ -871,4 +871,19 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
             }
         }
     }
+
+    suspend fun downloadSingleChunk(msgId: String): ByteArray = withContext(Dispatchers.IO) {
+        val msgUrl = "$baseUrl/messages/$msgId"
+        val msgRes = client.newCall(Request.Builder().url(msgUrl).build()).execute()
+        if (!msgRes.isSuccessful) throw Exception("Failed to fetch msg $msgId")
+        val map: Map<String, Any> = gson.fromJson(msgRes.body?.string() ?: "", object : TypeToken<Map<String, Any>>() {}.type)
+        @Suppress("UNCHECKED_CAST")
+        val attachments = map["attachments"] as? List<Map<String, Any>>
+        val url = attachments?.firstOrNull()?.get("url") as? String ?: throw Exception("No attachment URL")
+        val chunkRes = client.newCall(Request.Builder().url(url).build()).execute()
+        if (!chunkRes.isSuccessful) throw Exception("Failed to download chunk")
+        var chunkData = chunkRes.body?.bytes() ?: throw Exception("Empty chunk body")
+        chunkData = encryptionKey?.let { CryptoUtils.decrypt(chunkData, it) } ?: chunkData
+        chunkData
+    }
 }
