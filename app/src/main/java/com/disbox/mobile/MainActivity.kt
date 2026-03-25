@@ -722,6 +722,7 @@ fun PinPromptModal(title: String, onVerified: () -> Unit, onCancel: () -> Unit, 
     )
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun LoginScreen(viewModel: DisboxViewModel) {
     var url by remember { mutableStateOf(viewModel.webhookUrl) }
