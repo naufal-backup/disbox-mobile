@@ -43,6 +43,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -165,6 +166,7 @@ fun FileThumbnail(file: DisboxFile, viewModel: DisboxViewModel, modifier: Modifi
     val isVideo = isVideoFile(name)
     val isAudio = isAudioFile(name)
     var thumbFile by remember { mutableStateOf<File?>(null) }
+    var audioArt by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
     var isLoading by remember { mutableStateOf(false) }
 
     val isPreviewEnabled = viewModel.showPreviews && (
@@ -177,10 +179,22 @@ fun FileThumbnail(file: DisboxFile, viewModel: DisboxViewModel, modifier: Modifi
     LaunchedEffect(file.id, isPreviewEnabled) {
         if (!isPreviewEnabled) {
             thumbFile = null
+            audioArt = null
             return@LaunchedEffect
         }
         if (targetFile.exists()) {
             thumbFile = targetFile
+            if (isAudio && audioArt == null) {
+                try {
+                    val retriever = android.media.MediaMetadataRetriever()
+                    retriever.setDataSource(targetFile.absolutePath)
+                    val art = retriever.embeddedPicture
+                    if (art != null) {
+                        audioArt = android.graphics.BitmapFactory.decodeByteArray(art, 0, art.size)
+                    }
+                    retriever.release()
+                } catch (e: Exception) { e.printStackTrace() }
+            }
             return@LaunchedEffect
         }
         isLoading = true
@@ -188,6 +202,15 @@ fun FileThumbnail(file: DisboxFile, viewModel: DisboxViewModel, modifier: Modifi
             viewModel.api?.downloadFile(file, targetFile) { }
             if (targetFile.exists()) {
                 thumbFile = targetFile
+                if (isAudio) {
+                    val retriever = android.media.MediaMetadataRetriever()
+                    retriever.setDataSource(targetFile.absolutePath)
+                    val art = retriever.embeddedPicture
+                    if (art != null) {
+                        audioArt = android.graphics.BitmapFactory.decodeByteArray(art, 0, art.size)
+                    }
+                    retriever.release()
+                }
             }
         } catch (e: Exception) {
             e.printStackTrace()
@@ -199,16 +222,26 @@ fun FileThumbnail(file: DisboxFile, viewModel: DisboxViewModel, modifier: Modifi
     Box(modifier = modifier, contentAlignment = Alignment.Center) {
         if (thumbFile != null) {
             Box(contentAlignment = Alignment.Center) {
-                AsyncImage(
-                    model = ImageRequest.Builder(context)
-                        .data(thumbFile)
-                        .decoderFactory(VideoFrameDecoder.Factory())
-                        .crossfade(true)
-                        .build(),
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = androidx.compose.ui.layout.ContentScale.Crop
-                )
+                if (isAudio && audioArt != null) {
+                    androidx.compose.foundation.Image(
+                        bitmap = audioArt!!.asImageBitmap(),
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                    )
+                } else {
+                    AsyncImage(
+                        model = ImageRequest.Builder(context)
+                            .data(thumbFile)
+                            .decoderFactory(VideoFrameDecoder.Factory())
+                            .crossfade(true)
+                            .build(),
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                    )
+                }
+                
                 if (isVideo || isAudio) {
                     Box(
                         Modifier
@@ -254,15 +287,22 @@ fun MusicPlayerBar(exoPlayer: ExoPlayer, viewModel: DisboxViewModel) {
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 6.dp),
         shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.95f),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.1f)),
-        tonalElevation = 8.dp
+        color = Color.Transparent, // Removed black/solid background
+        tonalElevation = 0.dp
     ) {
-        Column(modifier = Modifier.padding(12.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+        // Using a Box with Blur/Translucent background to match desktop aesthetic
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(16.dp))
+                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.7f))
+                .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.1f), RoundedCornerShape(16.dp))
+        ) {
+            Column(modifier = Modifier.padding(12.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                 Box(
                     modifier = Modifier
                         .size(40.dp)
