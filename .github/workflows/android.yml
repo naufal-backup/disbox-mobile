@@ -42,7 +42,7 @@ jobs:
         tag_name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'latest' }}
         files: app/build/outputs/apk/release/*.apk
         generate_release_notes: true
-        prerelease: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        prerelease: false
         make_latest: true
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

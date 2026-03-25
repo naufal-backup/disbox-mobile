@@ -1336,10 +1336,8 @@ fun MediaPreviewItem(file: DisboxFile, viewModel: DisboxViewModel) {
                         exoPlayer.playWhenReady = true
                     }
                     
-                    // 3. Load rest chunk by chunk for progressive growth
-                    for (i in 1 until totalChunks) {
-                        viewModel.api?.downloadFilePartial(file, tempFile, i, i + 1) { }
-                    }
+                    // 3. Load the rest in one go in the background
+                    viewModel.api?.downloadFilePartial(file, tempFile, 1, totalChunks) { }
                 } else {
                     viewModel.api?.downloadFile(file, tempFile) { }
                     isDownloadingPreview = false
