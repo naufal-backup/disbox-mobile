@@ -18,16 +18,25 @@ class DiscordDataSource(
     private var currentOffset: Long = 0
     private var isOpen = false
 
-    private val estimatedChunkSize: Long
-        get() {
-            if (file.messageIds.isEmpty()) return 10 * 1024 * 1024L
-            // Use Math.ceil logic like the desktop app
-            val sizeDouble = file.size.toDouble() / file.messageIds.size
-            return Math.ceil(sizeDouble).toLong()
-        }
-
     private var cachedChunkIndex: Int = -1
     private var cachedChunkData: ByteArray? = null
+    private var actualChunkSize: Long = -1L
+
+    private fun getChunkSize(): Long {
+        if (actualChunkSize > 0) return actualChunkSize
+        if (file.messageIds.isEmpty()) return 10 * 1024 * 1024L
+        
+        // Fetch chunk 0 to determine the exact chunk size used during upload
+        val chunk0 = fetchChunk(0)
+        
+        // If there's only one chunk, the 'chunk size' is just the file size or chunk size, doesn't matter
+        actualChunkSize = if (file.messageIds.size == 1) {
+            file.size
+        } else {
+            chunk0.size.toLong()
+        }
+        return actualChunkSize
+    }
 
     override fun addTransferListener(transferListener: TransferListener) {}
 
@@ -50,7 +59,7 @@ class DiscordDataSource(
         if (bytesRemaining == 0L) return C.RESULT_END_OF_INPUT
 
         val bytesRead = try {
-            val cSize = estimatedChunkSize
+            val cSize = getChunkSize()
             val chunkIndex = (currentOffset / cSize).toInt()
             
             if (chunkIndex >= file.messageIds.size) {
@@ -62,8 +71,6 @@ class DiscordDataSource(
             
             val availableInChunk = chunkBytes.size - offsetInChunk
             if (availableInChunk <= 0) {
-                // Should not happen if chunk sizes are exactly as estimated
-                // But if they vary slightly, we might need to adjust logic
                 return C.RESULT_END_OF_INPUT 
             }
 
@@ -74,7 +81,7 @@ class DiscordDataSource(
             toCopyLong
         } catch (e: Exception) {
             e.printStackTrace()
-            0
+            return C.RESULT_END_OF_INPUT // Signal end on error so player doesn't loop infinitely
         }
 
         if (bytesRead > 0) {
