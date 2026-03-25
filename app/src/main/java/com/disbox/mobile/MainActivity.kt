@@ -35,6 +35,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -651,6 +652,7 @@ fun FolderSelectionDialog(
     )
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DriveScreen(viewModel: DisboxViewModel, isLockedView: Boolean = false, isStarredView: Boolean = false, isRecentView: Boolean = false) {
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
@@ -859,7 +861,6 @@ fun DriveScreen(viewModel: DisboxViewModel, isLockedView: Boolean = false, isSta
                         IconButton(onClick = { viewModel.setView(if (viewModel.viewMode == "grid") "list" else "grid") }) { 
                             Icon(if (viewModel.viewMode == "grid") Icons.Default.List else Icons.Default.GridView, null) 
                         }
-                        IconButton(onClick = { viewModel.refresh() }) { Icon(Icons.Default.Refresh, null) }
                     }
                 }
                 
@@ -915,7 +916,9 @@ fun DriveScreen(viewModel: DisboxViewModel, isLockedView: Boolean = false, isSta
             }
         }
     ) { padding ->
-        Box(
+        PullToRefreshBox(
+            isRefreshing = viewModel.isLoading,
+            onRefresh = { viewModel.refresh() },
             modifier = Modifier.padding(padding).fillMaxSize()
         ) {
             if (folders.isEmpty() && currentFiles.isEmpty()) {
@@ -1663,7 +1666,7 @@ fun SettingsScreen(viewModel: DisboxViewModel) {
                     Column(Modifier.weight(1f)) { Text("Master PIN", fontWeight = FontWeight.Bold); Text(if (hasPin) viewModel.t("pin_active") else viewModel.t("pin_not_set_security"), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface.copy(0.6f)) }
                     if (!hasPin) Button(onClick = { showPinDialog = "set" }, contentPadding = PaddingValues(horizontal = 12.dp)) { Text(viewModel.t("set_pin"), fontSize = 12.sp) }
                     else Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { 
-                        OutlinedButton(onClick = { showPinDialog = "change" }, contentPadding = PaddingValues(horizontal = 12.dp)) { Text(viewModel.t("rename"), fontSize = 12.sp) }
+                        OutlinedButton(onClick = { showPinDialog = "change" }, contentPadding = PaddingValues(horizontal = 12.dp)) { Text(viewModel.t("change_pin"), fontSize = 12.sp) }
                         OutlinedButton(onClick = { showPinDialog = "remove" }, colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error), contentPadding = PaddingValues(horizontal = 12.dp)) { Text(viewModel.t("delete"), fontSize = 12.sp) }
                     }
                 }
