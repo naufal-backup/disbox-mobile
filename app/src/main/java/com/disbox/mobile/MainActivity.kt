@@ -1234,11 +1234,11 @@ fun FilePreviewScreen(
                 userScrollEnabled = true
             ) { pageIndex ->
                 val currentFile = navigatableFiles[pageIndex]
-                MediaPreviewItem(currentFile, viewModel)
+                val isActive = pagerState.currentPage == pageIndex
+                MediaPreviewItem(currentFile, viewModel, isActive)
             }
 
-            // Top Bar
-            val currentFile = navigatableFiles.getOrNull(pagerState.currentPage) ?: file
+            // Top Bar            val currentFile = navigatableFiles.getOrNull(pagerState.currentPage) ?: file
             val name = currentFile.path.split("/").last()
             
             Row(
@@ -1276,7 +1276,7 @@ fun FilePreviewScreen(
 }
 
 @Composable
-fun MediaPreviewItem(file: DisboxFile, viewModel: DisboxViewModel) {
+fun MediaPreviewItem(file: DisboxFile, viewModel: DisboxViewModel, isActive: Boolean) {
     val name = file.path.split("/").last()
     val context = LocalContext.current
     var previewText by remember { mutableStateOf<String?>(null) }
@@ -1300,7 +1300,9 @@ fun MediaPreviewItem(file: DisboxFile, viewModel: DisboxViewModel) {
         }
     }
 
-    LaunchedEffect(file.id) {
+    LaunchedEffect(file.id, isActive) {
+        if (!isActive) return@LaunchedEffect
+        
         isDownloadingPreview = false
         errorMsg = null
         previewImageFile = null
