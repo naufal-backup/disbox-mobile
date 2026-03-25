@@ -53,9 +53,17 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
     var showPreviews by mutableStateOf(prefs.getBoolean("show_previews", true))
     var showImagePreviews by mutableStateOf(prefs.getBoolean("show_image_previews", true))
     var showVideoPreviews by mutableStateOf(prefs.getBoolean("show_video_previews", true))
+    var showMusicPreviews by mutableStateOf(prefs.getBoolean("show_music_previews", true))
     var showRecent by mutableStateOf(prefs.getBoolean("show_recent", false))
     var cloudSaveEnabled by mutableStateOf(prefs.getBoolean("cloud_save_enabled", false))
     var animationsEnabled by mutableStateOf(prefs.getBoolean("animations_enabled", true))
+
+    // --- Music Player States ---
+    var currentPlayingFile by mutableStateOf<DisboxFile?>(null)
+    var isPlaying by mutableStateOf(false)
+    var playbackProgress by mutableStateOf(0f)
+    var playbackDuration by mutableStateOf(0L)
+    var playbackPosition by mutableStateOf(0L)
 
     fun updatePreviews(show: Boolean) {
         showPreviews = show
@@ -70,6 +78,11 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
     fun updateVideoPreviews(show: Boolean) {
         showVideoPreviews = show
         prefs.edit().putBoolean("show_video_previews", show).apply()
+    }
+
+    fun updateMusicPreviews(show: Boolean) {
+        showMusicPreviews = show
+        prefs.edit().putBoolean("show_music_previews", show).apply()
     }
 
     fun updateRecent(show: Boolean) {

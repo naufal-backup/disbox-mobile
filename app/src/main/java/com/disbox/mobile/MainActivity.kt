@@ -150,17 +150,23 @@ fun isVideoFile(name: String): Boolean {
     return listOf("mp4", "mkv", "mov", "avi", "webm").contains(ext)
 }
 
+fun isAudioFile(name: String): Boolean {
+    val ext = name.split(".").last().lowercase()
+    return listOf("mp3", "wav", "flac", "ogg", "m4a").contains(ext)
+}
+
 @Composable
 fun FileThumbnail(file: DisboxFile, viewModel: DisboxViewModel, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val name = file.path.split("/").last()
     val isImage = isImageFile(name)
     val isVideo = isVideoFile(name)
+    val isAudio = isAudioFile(name)
     var thumbFile by remember { mutableStateOf<File?>(null) }
     var isLoading by remember { mutableStateOf(false) }
 
     val isPreviewEnabled = viewModel.showPreviews && (
-        (isImage && viewModel.showImagePreviews) || (isVideo && viewModel.showVideoPreviews)
+        (isImage && viewModel.showImagePreviews) || (isVideo && viewModel.showVideoPreviews) || (isAudio && viewModel.showMusicPreviews)
     )
 
     val cacheKey = "thumb_${file.id}"
@@ -201,14 +207,14 @@ fun FileThumbnail(file: DisboxFile, viewModel: DisboxViewModel, modifier: Modifi
                     modifier = Modifier.fillMaxSize(),
                     contentScale = androidx.compose.ui.layout.ContentScale.Crop
                 )
-                if (isVideo) {
+                if (isVideo || isAudio) {
                     Box(
                         Modifier
                             .size(20.dp)
                             .background(Color.Black.copy(alpha = 0.5f), CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(Icons.Default.PlayArrow, null, tint = Color.White, modifier = Modifier.size(14.dp))
+                        Icon(if (isVideo) Icons.Default.PlayArrow else Icons.Default.MusicNote, null, tint = Color.White, modifier = Modifier.size(14.dp))
                     }
                 }
             }
@@ -216,6 +222,106 @@ fun FileThumbnail(file: DisboxFile, viewModel: DisboxViewModel, modifier: Modifi
             CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
         } else {
             Text(getFileIcon(name), fontSize = 24.sp)
+        }
+    }
+}
+
+@Composable
+fun MusicPlayerBar(exoPlayer: ExoPlayer, viewModel: DisboxViewModel) {
+    val currentFile = viewModel.currentPlayingFile ?: return
+    val name = currentFile.path.split("/").last()
+    
+    LaunchedEffect(exoPlayer) {
+        while (true) {
+            if (exoPlayer.isPlaying) {
+                viewModel.playbackPosition = exoPlayer.currentPosition
+                viewModel.playbackDuration = exoPlayer.duration.coerceAtLeast(0)
+                if (viewModel.playbackDuration > 0) {
+                    viewModel.playbackProgress = viewModel.playbackPosition.toFloat() / viewModel.playbackDuration
+                }
+            }
+            delay(500)
+        }
+    }
+
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(72.dp)
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.primaryContainer,
+        tonalElevation = 8.dp
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)),
+                contentAlignment = Alignment.Center
+            ) {
+                FileThumbnail(currentFile, viewModel, Modifier.fillMaxSize())
+            }
+            
+            Spacer(modifier = Modifier.width(12.dp))
+            
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = name,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                
+                Spacer(modifier = Modifier.height(4.dp))
+                
+                LinearProgressIndicator(
+                    progress = { viewModel.playbackProgress },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(4.dp)
+                        .clip(CircleShape),
+                    color = MaterialTheme.colorScheme.primary,
+                    trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
+                )
+            }
+            
+            Spacer(modifier = Modifier.width(8.dp))
+            
+            IconButton(onClick = {
+                if (exoPlayer.isPlaying) {
+                    exoPlayer.pause()
+                    viewModel.isPlaying = false
+                } else {
+                    exoPlayer.play()
+                    viewModel.isPlaying = true
+                }
+            }) {
+                Icon(
+                    imageVector = if (viewModel.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                    contentDescription = if (viewModel.isPlaying) "Pause" else "Play",
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            }
+
+            IconButton(onClick = {
+                exoPlayer.stop()
+                viewModel.currentPlayingFile = null
+                viewModel.isPlaying = false
+            }) {
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = "Close",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
     }
 }
@@ -304,6 +410,34 @@ fun DisboxApp(viewModel: DisboxViewModel, onFinish: () -> Unit) {
         }
     }
     DisboxMobileTheme(darkTheme = viewModel.theme == "dark") {
+        val context = LocalContext.current
+        val musicPlayer = remember { ExoPlayer.Builder(context).build() }
+        
+        DisposableEffect(musicPlayer) {
+            onDispose { musicPlayer.release() }
+        }
+
+        LaunchedEffect(viewModel.currentPlayingFile) {
+            val file = viewModel.currentPlayingFile
+            if (file != null) {
+                val api = viewModel.api
+                if (api != null) {
+                    val name = file.path.split("/").last()
+                    val ext = name.split(".").last().lowercase()
+                    val dataSourceFactory = DiscordDataSourceFactory(api, file)
+                    val mediaSource = androidx.media3.exoplayer.source.ProgressiveMediaSource.Factory(dataSourceFactory)
+                        .createMediaSource(MediaItem.fromUri("disbox-music://${file.id}.$ext"))
+                    musicPlayer.setMediaSource(mediaSource)
+                    musicPlayer.prepare()
+                    musicPlayer.playWhenReady = true
+                    viewModel.isPlaying = true
+                }
+            } else {
+                musicPlayer.stop()
+                viewModel.isPlaying = false
+            }
+        }
+
         if (!viewModel.isConnected && !viewModel.isLoading) LoginScreen(viewModel)
         else if (viewModel.isLoading && !viewModel.isConnected) {
             Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background), Alignment.Center) {
@@ -317,14 +451,19 @@ fun DisboxApp(viewModel: DisboxViewModel, onFinish: () -> Unit) {
             Scaffold(
                 containerColor = MaterialTheme.colorScheme.background,
                 bottomBar = {
-                    NavigationBar(containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp) {
-                        tabIds.forEachIndexed { index, id ->
-                            NavigationBarItem(
-                                icon = { Icon(icons[index], contentDescription = tabs[index]) },
-                                label = { Text(tabs[index], fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                                selected = viewModel.activePage == id,
-                                onClick = { viewModel.setPage(id) }
-                            )
+                    Column {
+                        if (viewModel.currentPlayingFile != null) {
+                            MusicPlayerBar(musicPlayer, viewModel)
+                        }
+                        NavigationBar(containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp) {
+                            tabIds.forEachIndexed { index, id ->
+                                NavigationBarItem(
+                                    icon = { Icon(icons[index], contentDescription = tabs[index]) },
+                                    label = { Text(tabs[index], fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                                    selected = viewModel.activePage == id,
+                                    onClick = { viewModel.setPage(id) }
+                                )
+                            }
                         }
                     }
                 }
@@ -932,9 +1071,13 @@ fun DriveScreen(viewModel: DisboxViewModel, isLockedView: Boolean = false, isSta
                             if (isLocked && !viewModel.isVerified) pinPrompt = { viewModel.navigate("/$path") } else viewModel.navigate("/$path")
                         }
                     } }
-                    items(currentFiles) { f -> FileItemGrid(f, viewModel) { 
+                    items(currentFiles) { f -> FileItemGrid(f, viewModel) {
                         if (viewModel.selectionSet.isNotEmpty()) viewModel.toggleSelection(f.id)
-                        else if (f.isLocked && !viewModel.isVerified) pinPrompt = { previewFile = f } else previewFile = f 
+                        else if (f.isLocked && !viewModel.isVerified) pinPrompt = { 
+                            if (isAudioFile(f.path)) viewModel.currentPlayingFile = f else previewFile = f 
+                        } else {
+                            if (isAudioFile(f.path)) viewModel.currentPlayingFile = f else previewFile = f
+                        }
                     } }
                 }
             } else {
@@ -946,9 +1089,13 @@ fun DriveScreen(viewModel: DisboxViewModel, isLockedView: Boolean = false, isSta
                             if (isLocked && !viewModel.isVerified) pinPrompt = { viewModel.navigate("/$path") } else viewModel.navigate("/$path")
                         }
                     } }
-                    items(currentFiles) { f -> FileItemList(f, viewModel) { 
+                    items(currentFiles) { f -> FileItemList(f, viewModel) {
                         if (viewModel.selectionSet.isNotEmpty()) viewModel.toggleSelection(f.id)
-                        else if (f.isLocked && !viewModel.isVerified) pinPrompt = { previewFile = f } else previewFile = f 
+                        else if (f.isLocked && !viewModel.isVerified) pinPrompt = { 
+                            if (isAudioFile(f.path)) viewModel.currentPlayingFile = f else previewFile = f 
+                        } else {
+                            if (isAudioFile(f.path)) viewModel.currentPlayingFile = f else previewFile = f
+                        }
                     } }
                 }
             }
@@ -1594,6 +1741,10 @@ fun SettingsScreen(viewModel: DisboxViewModel) {
                         Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), Arrangement.SpaceBetween, Alignment.CenterVertically) {
                             Text(viewModel.t("video_previews"), fontSize = 13.sp)
                             Switch(viewModel.showVideoPreviews, { viewModel.updateVideoPreviews(it) }, modifier = Modifier.scale(0.8f))
+                        }
+                        Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), Arrangement.SpaceBetween, Alignment.CenterVertically) {
+                            Text(viewModel.t("music_previews"), fontSize = 13.sp)
+                            Switch(viewModel.showMusicPreviews, { viewModel.updateMusicPreviews(it) }, modifier = Modifier.scale(0.8f))
                         }
                     }
                 }

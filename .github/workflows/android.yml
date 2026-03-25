@@ -2,11 +2,11 @@ name: Android CI/CD
 
 on:
   push:
-    branches: [ "master", "main" ]
+    branches: [ "**" ]
     tags:
       - 'v*'
   pull_request:
-    branches: [ "master", "main" ]
+    branches: [ "**" ]
   workflow_dispatch:
 
 jobs:
