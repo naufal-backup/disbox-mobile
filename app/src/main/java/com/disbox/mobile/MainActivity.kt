@@ -914,7 +914,7 @@ fun DriveScreen(viewModel: DisboxViewModel, isLockedView: Boolean = false, isSta
                 }
             }
         }
-    } { padding ->
+    ) { padding ->
         Box(
             modifier = Modifier.padding(padding).fillMaxSize()
         ) {
