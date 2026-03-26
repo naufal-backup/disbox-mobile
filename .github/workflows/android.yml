@@ -24,23 +24,34 @@ jobs:
         distribution: 'temurin'
         cache: gradle
 
-    - name: Grant execute permission for gradlew
-      run: chmod +x gradlew
+    - name: Apply Fixes
+      run: |
+        echo "Applying environment fixes..."
+        # Fix gradlew permission if missing
+        if [ ! -x gradlew ]; then
+          echo "Setting execution permission for gradlew"
+          chmod +x gradlew
+        else
+          echo "gradlew already has execution permission"
+        fi
+        
+        # Future fixes can be added here as if-else blocks
+        # if [ some_condition ]; then do_fix; fi
 
     - name: Build with Gradle
-      run: ./gradlew assembleRelease
+      run: ./gradlew assembleDebug
 
     - name: Upload APK Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: release-apk
-        path: app/build/outputs/apk/release/*.apk
+        name: debug-apk
+        path: app/build/outputs/apk/debug/*.apk
 
     - name: Create Release
       uses: softprops/action-gh-release@v2
       with:
         tag_name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'latest' }}
-        files: app/build/outputs/apk/release/*.apk
+        files: app/build/outputs/apk/debug/*.apk
         generate_release_notes: true
         prerelease: false
         make_latest: true

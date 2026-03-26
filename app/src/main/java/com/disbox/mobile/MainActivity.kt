@@ -2110,7 +2110,7 @@ fun SettingsScreen(viewModel: DisboxViewModel) {
                             Icon(Icons.Default.Link, null, tint = if(viewModel.webhookUrl == savedUrl) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(0.4f), modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(12.dp))
                             Text(
-                                savedUrl.take(30) + if(savedUrl.length > 30) "..." else "",
+                                (savedUrl?.take(30) ?: "") + if((savedUrl?.length ?: 0) > 30) "..." else "",
                                 fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
                                 color = if(viewModel.webhookUrl == savedUrl) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                                 modifier = Modifier.weight(1f)
