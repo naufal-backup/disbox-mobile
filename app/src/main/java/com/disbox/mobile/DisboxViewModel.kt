@@ -47,7 +47,7 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
         prefs.edit().putString("sort_mode", mode).apply()
     }
 
-    var latestVersion by mutableStateOf("v3.8.6")
+    var latestVersion by mutableStateOf("v3.8.7")
     var chunkSize by mutableStateOf(prefs.getInt("chunk_size", 10 * 1024 * 1024))
     var metadataStatus by mutableStateOf("synced")
 

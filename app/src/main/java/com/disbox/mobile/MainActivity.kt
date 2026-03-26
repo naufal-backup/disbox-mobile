@@ -318,14 +318,17 @@ fun MusicPlayerBar(exoPlayer: ExoPlayer, viewModel: DisboxViewModel) {
     LaunchedEffect(exoPlayer) {
         while (true) {
             if (exoPlayer.isPlaying && !isSeeking) {
-                viewModel.playbackPosition = exoPlayer.currentPosition
-                viewModel.playbackDuration = exoPlayer.duration.coerceAtLeast(0)
-                if (viewModel.playbackDuration > 0) {
-                    viewModel.playbackProgress = viewModel.playbackPosition.toFloat() / viewModel.playbackDuration
-                    sliderValue = viewModel.playbackProgress
+                val pos = exoPlayer.currentPosition
+                val dur = exoPlayer.duration.coerceAtLeast(0)
+                if (pos != viewModel.playbackPosition) viewModel.playbackPosition = pos
+                if (dur != viewModel.playbackDuration) viewModel.playbackDuration = dur
+                if (dur > 0) {
+                    val progress = pos.toFloat() / dur
+                    viewModel.playbackProgress = progress
+                    sliderValue = progress
                 }
             }
-            delay(500)
+            delay(1000) // Increase delay to 1s for better performance
         }
     }
 
