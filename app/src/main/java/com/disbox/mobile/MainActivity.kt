@@ -552,24 +552,19 @@ fun DisboxApp(viewModel: DisboxViewModel, onFinish: () -> Unit) {
             Scaffold(
                 containerColor = MaterialTheme.colorScheme.background,
                 bottomBar = {
-                    Column {
-                        if (viewModel.currentPlayingFile != null) {
-                            MusicPlayerBar(musicPlayer, viewModel)
-                        }
-                        NavigationBar(containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp) {
-                            tabIds.forEachIndexed { index, id ->
-                                NavigationBarItem(
-                                    icon = { Icon(icons[index], contentDescription = tabs[index]) },
-                                    label = { Text(tabs[index], fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                                    selected = viewModel.activePage == id,
-                                    onClick = { viewModel.setPage(id) }
-                                )
-                            }
+                    NavigationBar(containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp) {
+                        tabIds.forEachIndexed { index, id ->
+                            NavigationBarItem(
+                                icon = { Icon(icons[index], contentDescription = tabs[index]) },
+                                label = { Text(tabs[index], fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                                selected = viewModel.activePage == id,
+                                onClick = { viewModel.setPage(id) }
+                            )
                         }
                     }
                 }
             ) { padding ->
-                Box(Modifier.padding(padding)) {
+                Box(Modifier.padding(padding).fillMaxSize()) {
                     when (viewModel.activePage) {
                         "drive" -> DriveScreen(viewModel)
                         "recent" -> DriveScreen(viewModel, isRecentView = true)
@@ -579,6 +574,12 @@ fun DisboxApp(viewModel: DisboxViewModel, onFinish: () -> Unit) {
                         "shared" -> SharedScreen(viewModel)
                         "settings" -> SettingsScreen(viewModel)
                         else -> PlaceholderScreen(viewModel.activePage)
+                    }
+                    
+                    if (viewModel.currentPlayingFile != null) {
+                        Box(Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp)) {
+                            MusicPlayerBar(musicPlayer, viewModel)
+                        }
                     }
                     
                     if (viewModel.isLoading) {

@@ -13,8 +13,8 @@ android {
         applicationId = "com.disbox.mobile"
         minSdk = 24
         targetSdk = 35
-        versionCode = 16
-        versionName = "3.5.4"
+        versionCode = 17
+        versionName = "3.6.0"
 
         vectorDrawables {
             useSupportLibrary = true
