@@ -264,10 +264,37 @@ fun FileThumbnail(file: DisboxFile, viewModel: DisboxViewModel, modifier: Modifi
 @Composable
 fun MusicPlayerBar(exoPlayer: ExoPlayer, viewModel: DisboxViewModel) {
     val currentFile = viewModel.currentPlayingFile ?: return
-    val name = currentFile.path.split("/").last()
+    val context = LocalContext.current
+    val fileName = currentFile.path.split("/").last()
+    var songTitle by remember { mutableStateOf(fileName) }
     var isSeeking by remember { mutableStateOf(false) }
     var sliderValue by remember { mutableStateOf(0f) }
     
+    LaunchedEffect(currentFile.id) {
+        // Try to get title from metadata
+        val cacheKey = "thumb_${currentFile.id}"
+        val targetFile = File(context.cacheDir, cacheKey)
+        if (targetFile.exists()) {
+            try {
+                val retriever = android.media.MediaMetadataRetriever()
+                retriever.setDataSource(targetFile.absolutePath)
+                val title = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_TITLE)
+                val artist = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_ARTIST)
+                if (!title.isNullOrBlank()) {
+                    songTitle = if (!artist.isNullOrBlank()) "$title - $artist" else title
+                } else {
+                    songTitle = fileName
+                }
+                retriever.release()
+            } catch (e: Exception) { 
+                songTitle = fileName
+                e.printStackTrace() 
+            }
+        } else {
+            songTitle = fileName
+        }
+    }
+
     LaunchedEffect(exoPlayer) {
         while (true) {
             if (exoPlayer.isPlaying && !isSeeking) {
@@ -287,14 +314,14 @@ fun MusicPlayerBar(exoPlayer: ExoPlayer, viewModel: DisboxViewModel) {
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 6.dp),
         shape = RoundedCornerShape(16.dp),
-        color = Color.Transparent,
-        tonalElevation = 0.dp
+        color = MaterialTheme.colorScheme.surface, // Opaque background
+        tonalElevation = 8.dp,
+        shadowElevation = 4.dp
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(16.dp))
-                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.7f))
                 .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.1f), RoundedCornerShape(16.dp))
         ) {
             Column(modifier = Modifier.padding(12.dp)) {
@@ -304,19 +331,21 @@ fun MusicPlayerBar(exoPlayer: ExoPlayer, viewModel: DisboxViewModel) {
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(40.dp)
+                            .size(44.dp)
                             .clip(RoundedCornerShape(8.dp))
                             .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)),
                         contentAlignment = Alignment.Center
                     ) {
-                        FileThumbnail(currentFile, viewModel, Modifier.fillMaxSize())
+                        key(currentFile.id) {
+                            FileThumbnail(currentFile, viewModel, Modifier.fillMaxSize())
+                        }
                     }
                     
                     Spacer(modifier = Modifier.width(12.dp))
                     
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = name,
+                            text = songTitle,
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.Bold,
                             maxLines = 1,
