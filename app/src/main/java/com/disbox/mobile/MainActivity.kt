@@ -613,7 +613,7 @@ fun DisboxApp(viewModel: DisboxViewModel, onFinish: () -> Unit) {
                 containerColor = MaterialTheme.colorScheme.background,
                 bottomBar = {
                     NavigationBar(
-                        containerColor = MaterialTheme.colorScheme.background, // Match background to prevent "bar" effect
+                        containerColor = MaterialTheme.colorScheme.background,
                         tonalElevation = 0.dp
                     ) {
                         tabIds.forEachIndexed { index, id ->
@@ -627,37 +627,50 @@ fun DisboxApp(viewModel: DisboxViewModel, onFinish: () -> Unit) {
                     }
                 }
             ) { padding ->
-                Box(Modifier.padding(padding).fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-                    Column(Modifier.fillMaxSize()) {
-                        // Content Area
-                        Box(Modifier.weight(1f)) {
-                            when (viewModel.activePage) {
-                                "drive" -> DriveScreen(viewModel)
-                                "recent" -> DriveScreen(viewModel, isRecentView = true)
-                                "starred" -> DriveScreen(viewModel, isStarredView = true)
-                                "locked" -> if (viewModel.isVerified) DriveScreen(viewModel, isLockedView = true) else LockedGateway(viewModel)
-                                "cloud-save" -> CloudSaveScreen(viewModel)
-                                "shared" -> SharedScreen(viewModel)
-                                "settings" -> SettingsScreen(viewModel)
-                                else -> PlaceholderScreen(viewModel.activePage)
-                            }
-                        }
-                        
-                        // Floating Music Bar Space (internal to scaffold body)
+                Box(
+                    Modifier
+                        .padding(padding)
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.background)
+                ) {
+                    // Main Content
+                    when (viewModel.activePage) {
+                        "drive" -> DriveScreen(viewModel)
+                        "recent" -> DriveScreen(viewModel, isRecentView = true)
+                        "starred" -> DriveScreen(viewModel, isStarredView = true)
+                        "locked" -> if (viewModel.isVerified) DriveScreen(viewModel, isLockedView = true) else LockedGateway(viewModel)
+                        "cloud-save" -> CloudSaveScreen(viewModel)
+                        "shared" -> SharedScreen(viewModel)
+                        "settings" -> SettingsScreen(viewModel)
+                        else -> PlaceholderScreen(viewModel.activePage)
+                    }
+                    
+                    // Overlays
+                    Column(
+                        modifier = Modifier.align(Alignment.BottomCenter),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
                         if (viewModel.currentPlayingFile != null) {
                             Box(Modifier.padding(bottom = 12.dp)) {
                                 MusicPlayerBar(musicPlayer, viewModel)
                             }
                         }
-                    }
-                    
-                    if (viewModel.isLoading) {
-                        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.3f)), Alignment.Center) {
-                            CircularProgressIndicator(Modifier.size(48.dp))
+                        
+                        if (viewModel.progressMap.isNotEmpty()) {
+                            TransferPanel(viewModel.progressMap, viewModel)
                         }
                     }
                     
-                    if (viewModel.progressMap.isNotEmpty()) TransferPanel(viewModel.progressMap, viewModel)
+                    if (viewModel.isLoading) {
+                        Box(
+                            Modifier
+                                .fillMaxSize()
+                                .background(Color.Black.copy(alpha = 0.3f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator(Modifier.size(48.dp))
+                        }
+                    }
                 }
             }
         }
