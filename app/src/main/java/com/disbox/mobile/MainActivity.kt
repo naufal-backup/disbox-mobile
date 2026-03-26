@@ -267,11 +267,13 @@ fun MusicPlayerBar(exoPlayer: ExoPlayer, viewModel: DisboxViewModel) {
     val context = LocalContext.current
     val fileName = currentFile.path.split("/").last()
     var songTitle by remember { mutableStateOf(fileName) }
+    var albumArt by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
     var isSeeking by remember { mutableStateOf(false) }
     var sliderValue by remember { mutableStateOf(0f) }
+    val notificationHelper = remember { NotificationHelper(context) }
     
     LaunchedEffect(currentFile.id) {
-        // Try to get title from metadata
+        // Try to get title and art from metadata
         val cacheKey = "thumb_${currentFile.id}"
         val targetFile = File(context.cacheDir, cacheKey)
         if (targetFile.exists()) {
@@ -280,6 +282,12 @@ fun MusicPlayerBar(exoPlayer: ExoPlayer, viewModel: DisboxViewModel) {
                 retriever.setDataSource(targetFile.absolutePath)
                 val title = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_TITLE)
                 val artist = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_ARTIST)
+                val art = retriever.embeddedPicture
+                if (art != null) {
+                    albumArt = android.graphics.BitmapFactory.decodeByteArray(art, 0, art.size)
+                } else {
+                    albumArt = null
+                }
                 if (!title.isNullOrBlank()) {
                     songTitle = if (!artist.isNullOrBlank()) "$title - $artist" else title
                 } else {
@@ -288,10 +296,22 @@ fun MusicPlayerBar(exoPlayer: ExoPlayer, viewModel: DisboxViewModel) {
                 retriever.release()
             } catch (e: Exception) { 
                 songTitle = fileName
+                albumArt = null
                 e.printStackTrace() 
             }
         } else {
             songTitle = fileName
+            albumArt = null
+        }
+    }
+
+    LaunchedEffect(songTitle, viewModel.isPlaying, albumArt) {
+        notificationHelper.showMediaNotification(songTitle, viewModel.isPlaying, albumArt)
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            notificationHelper.cancelMediaNotification()
         }
     }
 
@@ -431,6 +451,14 @@ fun formatTime(ms: Long): String {
     val minutes = totalSeconds / 60
     val seconds = totalSeconds % 60
     return "%d:%02d".format(minutes, seconds)
+}
+
+fun formatSize(size: Long): String {
+    return if (size >= 1024 * 1024) {
+        "%.2f MB".format(size.toFloat() / (1024 * 1024))
+    } else {
+        "${size / 1024} KB"
+    }
 }
 
 @Composable
@@ -1603,7 +1631,7 @@ fun FilePreviewScreen(
                         fontSize = 14.sp
                     )
                     Text(
-                        "${currentFile.size / 1024} KB",
+                        formatSize(currentFile.size),
                         fontSize = 10.sp,
                         color = Color.White.copy(alpha = 0.6f)
                     )
@@ -1821,7 +1849,7 @@ fun ListFileItem(file: DisboxFile?, name: String, isFolder: Boolean, size: Long 
                 Text(name, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface, fontSize = 14.sp * zoom, modifier = Modifier.weight(1f, false))
                 if (isStarred) { Spacer(modifier = Modifier.width(4.dp)); Icon(Icons.Default.Star, contentDescription = null, tint = Color(0xFFF0A500), modifier = Modifier.size(12.dp * zoom)) }
             }
-            Text(if (isFolder) viewModel.t("folder") else "${size / 1024} KB", fontSize = 11.sp * zoom, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
+            Text(if (isFolder) viewModel.t("folder") else formatSize(size), fontSize = 11.sp * zoom, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
         }
     }
 }
@@ -1841,7 +1869,7 @@ fun GridFileItem(file: DisboxFile?, name: String, isFolder: Boolean, size: Long 
             }
             Spacer(Modifier.height(6.dp))
             Text(name, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis, color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface, fontSize = 11.sp * zoom, textAlign = TextAlign.Center)
-            Text(if (isFolder) viewModel.t("folder") else "${size / 1024} KB", fontSize = 9.sp * zoom, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
+            Text(if (isFolder) viewModel.t("folder") else formatSize(size), fontSize = 9.sp * zoom, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
         }
     }
 }

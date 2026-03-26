@@ -2,28 +2,34 @@ package com.disbox.mobile
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
+import android.graphics.Bitmap
 import android.os.Build
 import androidx.core.app.NotificationCompat
-import androidx.core.app.NotificationManagerCompat
+import androidx.media3.common.Player
 
 class NotificationHelper(private val context: Context) {
     private val CHANNEL_ID = "disbox_transfers"
+    private val MEDIA_CHANNEL_ID = "disbox_media"
     private val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
     init {
-        createNotificationChannel()
+        createNotificationChannels()
     }
 
-    private fun createNotificationChannel() {
+    private fun createNotificationChannels() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val name = "File Transfers"
-            val descriptionText = "Notifications for upload and download progress"
-            val importance = NotificationManager.IMPORTANCE_LOW
-            val channel = NotificationChannel(CHANNEL_ID, name, importance).apply {
-                description = descriptionText
+            val transferChannel = NotificationChannel(CHANNEL_ID, "File Transfers", NotificationManager.IMPORTANCE_LOW).apply {
+                description = "Notifications for upload and download progress"
             }
-            notificationManager.createNotificationChannel(channel)
+            val mediaChannel = NotificationChannel(MEDIA_CHANNEL_ID, "Media Playback", NotificationManager.IMPORTANCE_LOW).apply {
+                description = "Notifications for music playback"
+                setShowBadge(false)
+            }
+            notificationManager.createNotificationChannel(transferChannel)
+            notificationManager.createNotificationChannel(mediaChannel)
         }
     }
 
@@ -38,10 +44,27 @@ class NotificationHelper(private val context: Context) {
             .setOnlyAlertOnce(true)
 
         notificationManager.notify(id, builder.build())
-        
-        if (progress >= 1f) {
-            // Optional: Dismiss after 3 seconds if completed
-            // handler.postDelayed({ notificationManager.cancel(id) }, 3000)
-        }
+    }
+
+    fun showMediaNotification(title: String, isPlaying: Boolean, albumArt: Bitmap? = null) {
+        val intent = Intent(context, MainActivity::class.java)
+        val pendingIntent = PendingIntent.getActivity(context, 0, intent, PendingIntent.FLAG_IMMUTABLE)
+
+        val builder = NotificationCompat.Builder(context, MEDIA_CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.ic_media_play)
+            .setContentTitle(title)
+            .setContentText(if (isPlaying) "Playing" else "Paused")
+            .setLargeIcon(albumArt)
+            .setContentIntent(pendingIntent)
+            .setOngoing(isPlaying)
+            .setSilent(true)
+            .setStyle(androidx.media.app.NotificationCompat.MediaStyle())
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+
+        notificationManager.notify(1337, builder.build())
+    }
+
+    fun cancelMediaNotification() {
+        notificationManager.cancel(1337)
     }
 }
