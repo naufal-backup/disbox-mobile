@@ -74,7 +74,12 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
     var hashedWebhook: String? = null
     private var encryptionKey: ByteArray? = null
     
-    private val baseUrl: String get() = webhookUrl.split("?")[0]
+    private val baseUrl: String get() {
+        var url = webhookUrl.split("?")[0].trim()
+        if (!url.startsWith("http")) url = "https://$url"
+        url = url.replace("discordapp.com", "discord.com")
+        return url
+    }
 
     var lastSyncedId: String? = null
     var chunkSize = 8 * 1024 * 1024
@@ -97,7 +102,10 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
         hashedWebhook = hashWebhook(webhookUrl)
         encryptionKey = CryptoUtils.deriveKey(webhookUrl)
         migrateJsonToSqlite()
-        syncMetadata(forceSyncId)
+        val success = syncMetadata(forceSyncId)
+        if (!success && forceSyncId != null) {
+            throw Exception("Failed to load metadata from Message ID: $forceSyncId")
+        }
         hashedWebhook!!
     }
 

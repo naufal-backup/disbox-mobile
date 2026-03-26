@@ -182,7 +182,7 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    fun connect(url: String) {
+    fun connect(url: String, msgId: String? = null) {
         pollJob?.cancel()
         isConnected = false
         allFiles = emptyList()
@@ -207,7 +207,7 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             isLoading = true
             try {
-                newApi.init()
+                newApi.init(forceSyncId = msgId)
                 allFiles = newApi.getFileSystem()
                 isConnected = true
                 loadShareData()

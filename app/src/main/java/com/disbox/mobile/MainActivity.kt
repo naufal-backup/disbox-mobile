@@ -827,6 +827,9 @@ fun PinPromptModal(title: String, onVerified: () -> Unit, onCancel: () -> Unit, 
 @Composable
 fun LoginScreen(viewModel: DisboxViewModel) {
     var url by remember { mutableStateOf(viewModel.webhookUrl) }
+    var msgId by remember { mutableStateOf("") }
+    var showAdvanced by remember { mutableStateOf(false) }
+    
     Column(
         modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(32.dp).verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.Center,
@@ -868,8 +871,30 @@ fun LoginScreen(viewModel: DisboxViewModel) {
 
         Spacer(Modifier.height(32.dp))
         OutlinedTextField(value = url, onValueChange = { url = it }, label = { Text(viewModel.t("webhook_url")) }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(10.dp))
-        Spacer(Modifier.height(24.dp))
-        Button(onClick = { viewModel.connect(url) }, modifier = Modifier.fillMaxWidth().height(56.dp), shape = RoundedCornerShape(10.dp), enabled = !viewModel.isLoading) {
+        
+        Spacer(Modifier.height(8.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start) {
+            TextButton(onClick = { showAdvanced = !showAdvanced }) {
+                Text(if (showAdvanced) "Hide Advanced" else "Advanced Options (Manual Sync)", fontSize = 12.sp)
+            }
+        }
+        
+        if (showAdvanced) {
+            OutlinedTextField(
+                value = msgId, 
+                onValueChange = { msgId = it }, 
+                label = { Text("Metadata Message ID (Optional)") }, 
+                modifier = Modifier.fillMaxWidth(), 
+                shape = RoundedCornerShape(10.dp),
+                placeholder = { Text("e.g. 123456789012345678") }
+            )
+            Text("Use this if your file list is empty or doesn't sync automatically.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f), modifier = Modifier.padding(top = 4.dp))
+            Spacer(Modifier.height(16.dp))
+        } else {
+            Spacer(Modifier.height(16.dp))
+        }
+
+        Button(onClick = { viewModel.connect(url, msgId.ifBlank { null }) }, modifier = Modifier.fillMaxWidth().height(56.dp), shape = RoundedCornerShape(10.dp), enabled = !viewModel.isLoading) {
             if (viewModel.isLoading) CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp))
             else Text(viewModel.t("connect_drive"), fontWeight = FontWeight.Bold)
         }
