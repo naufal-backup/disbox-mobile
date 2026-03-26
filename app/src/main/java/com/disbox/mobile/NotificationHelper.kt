@@ -6,6 +6,7 @@ import android.content.Context
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import com.disbox.mobile.R
 
 class NotificationHelper(private val context: Context) {
     private val CHANNEL_ID = "disbox_transfers"
