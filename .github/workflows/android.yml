@@ -35,6 +35,12 @@ jobs:
           echo "gradlew already has execution permission"
         fi
         
+        # [NEW] Fix common build issues
+        if [ -d "app/build" ]; then
+          echo "Cleaning previous build artifacts"
+          rm -rf app/build
+        fi
+        
         # Future fixes can be added here as if-else blocks
         # if [ some_condition ]; then do_fix; fi
 
