@@ -5,6 +5,9 @@ import android.content.Context
 import android.net.Uri
 import android.os.Environment
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
@@ -53,6 +56,7 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
     var showPreviews by mutableStateOf(prefs.getBoolean("show_previews", true))
     var showImagePreviews by mutableStateOf(prefs.getBoolean("show_image_previews", true))
     var showVideoPreviews by mutableStateOf(prefs.getBoolean("show_video_previews", true))
+    var showMusicPreviews by mutableStateOf(prefs.getBoolean("show_music_previews", true))
     var showRecent by mutableStateOf(prefs.getBoolean("show_recent", false))
     var cloudSaveEnabled by mutableStateOf(prefs.getBoolean("cloud_save_enabled", false))
     var animationsEnabled by mutableStateOf(prefs.getBoolean("animations_enabled", true))
@@ -72,6 +76,11 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
         prefs.edit().putBoolean("show_video_previews", show).apply()
     }
 
+    fun updateMusicPreviews(show: Boolean) {
+        showMusicPreviews = show
+        prefs.edit().putBoolean("show_music_previews", show).apply()
+    }
+
     fun updateRecent(show: Boolean) {
         showRecent = show
         prefs.edit().putBoolean("show_recent", show).apply()
@@ -89,6 +98,19 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
 
     var moveCopyMode by mutableStateOf<String?>(null)
     var moveCopyItems by mutableStateOf<Set<String>>(emptySet())
+
+    // --- Music Player State ---
+    var currentPlayingFile by mutableStateOf<DisboxFile?>(null)
+    var isPlaying by mutableStateOf(false)
+    var playbackPosition by mutableLongStateOf(0L)
+    var playbackDuration by mutableLongStateOf(0L)
+    var playbackProgress by mutableFloatStateOf(0f)
+    var repeatMode by mutableIntStateOf(prefs.getInt("repeat_mode", 0))
+
+    fun updateRepeatMode(mode: Int) {
+        repeatMode = mode
+        prefs.edit().putInt("repeat_mode", mode).apply()
+    }
 
     // --- Sharing States ---
     var shareEnabled by mutableStateOf(false)

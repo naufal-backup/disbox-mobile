@@ -9,22 +9,49 @@ import androidx.core.app.NotificationManagerCompat
 
 class NotificationHelper(private val context: Context) {
     private val CHANNEL_ID = "disbox_transfers"
+    private val MEDIA_CHANNEL_ID = "disbox_media"
+    private val MEDIA_NOTIFICATION_ID = 453
     private val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
     init {
-        createNotificationChannel()
+        createNotificationChannels()
     }
 
-    private fun createNotificationChannel() {
+    private fun createNotificationChannels() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val name = "File Transfers"
-            val descriptionText = "Notifications for upload and download progress"
-            val importance = NotificationManager.IMPORTANCE_LOW
-            val channel = NotificationChannel(CHANNEL_ID, name, importance).apply {
-                description = descriptionText
+            val transfersChannel = NotificationChannel(CHANNEL_ID, "File Transfers", NotificationManager.IMPORTANCE_LOW).apply {
+                description = "Notifications for upload and download progress"
             }
-            notificationManager.createNotificationChannel(channel)
+            
+            val mediaChannel = NotificationChannel(MEDIA_CHANNEL_ID, "Music Playback", NotificationManager.IMPORTANCE_LOW).apply {
+                description = "Controls for current music playback"
+                setSound(null, null)
+                enableLights(false)
+                enableVibration(false)
+            }
+            
+            notificationManager.createNotificationChannel(transfersChannel)
+            notificationManager.createNotificationChannel(mediaChannel)
         }
+    }
+
+    fun showMediaNotification(title: String, isPlaying: Boolean, albumArt: android.graphics.Bitmap? = null) {
+        val builder = NotificationCompat.Builder(context, MEDIA_CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setContentTitle("Disbox Music")
+            .setContentText(title)
+            .setLargeIcon(albumArt)
+            .setOngoing(isPlaying)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setOnlyAlertOnce(true)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setStyle(androidx.media.app.NotificationCompat.MediaStyle())
+
+        notificationManager.notify(MEDIA_NOTIFICATION_ID, builder.build())
+    }
+
+    fun cancelMediaNotification() {
+        notificationManager.cancel(MEDIA_NOTIFICATION_ID)
     }
 
     fun showProgressNotification(id: Int, title: String, progress: Float, isUpload: Boolean) {
