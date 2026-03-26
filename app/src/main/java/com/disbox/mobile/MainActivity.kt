@@ -287,10 +287,9 @@ fun MusicPlayerBar(exoPlayer: ExoPlayer, viewModel: DisboxViewModel) {
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 6.dp),
         shape = RoundedCornerShape(16.dp),
-        color = Color.Transparent, // Removed black/solid background
+        color = Color.Transparent,
         tonalElevation = 0.dp
     ) {
-        // Using a Box with Blur/Translucent background to match desktop aesthetic
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -303,96 +302,97 @@ fun MusicPlayerBar(exoPlayer: ExoPlayer, viewModel: DisboxViewModel) {
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                Box(
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        FileThumbnail(currentFile, viewModel, Modifier.fillMaxSize())
+                    }
+                    
+                    Spacer(modifier = Modifier.width(12.dp))
+                    
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = name,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = "${formatTime(viewModel.playbackPosition)} / ${formatTime(viewModel.playbackDuration)}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                        )
+                    }
+                    
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = {
+                            viewModel.updateRepeatMode((viewModel.repeatMode + 1) % 3)
+                        }) {
+                            Icon(
+                                imageVector = when(viewModel.repeatMode) {
+                                    1 -> Icons.Default.RepeatOne
+                                    2 -> Icons.Default.Repeat
+                                    else -> Icons.Default.Repeat
+                                },
+                                contentDescription = "Repeat",
+                                tint = if (viewModel.repeatMode > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+
+                        IconButton(onClick = {
+                            if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play()
+                        }) {
+                            Icon(
+                                imageVector = if (viewModel.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                contentDescription = if (viewModel.isPlaying) "Pause" else "Play",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(28.dp)
+                            )
+                        }
+
+                        IconButton(onClick = {
+                            exoPlayer.stop()
+                            viewModel.currentPlayingFile = null
+                        }) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Close",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(4.dp))
+                
+                Slider(
+                    value = if (isSeeking) sliderValue else viewModel.playbackProgress,
+                    onValueChange = {
+                        isSeeking = true
+                        sliderValue = it
+                    },
+                    onValueChangeFinished = {
+                        val targetPos = (sliderValue * exoPlayer.duration).toLong()
+                        exoPlayer.seekTo(targetPos)
+                        isSeeking = false
+                    },
                     modifier = Modifier
-                        .size(40.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    FileThumbnail(currentFile, viewModel, Modifier.fillMaxSize())
-                }
-                
-                Spacer(modifier = Modifier.width(12.dp))
-                
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = name,
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        .fillMaxWidth()
+                        .height(24.dp),
+                    colors = SliderDefaults.colors(
+                        thumbColor = MaterialTheme.colorScheme.primary,
+                        activeTrackColor = MaterialTheme.colorScheme.primary,
+                        inactiveTrackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
                     )
-                    Text(
-                        text = "${formatTime(viewModel.playbackPosition)} / ${formatTime(viewModel.playbackDuration)}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                    )
-                }
-                
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = {
-                        viewModel.updateRepeatMode((viewModel.repeatMode + 1) % 3)
-                    }) {
-                        Icon(
-                            imageVector = when(viewModel.repeatMode) {
-                                1 -> Icons.Default.RepeatOne
-                                2 -> Icons.Default.Repeat
-                                else -> Icons.Default.Repeat
-                            },
-                            contentDescription = "Repeat",
-                            tint = if (viewModel.repeatMode > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-
-                    IconButton(onClick = {
-                        if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play()
-                    }) {
-                        Icon(
-                            imageVector = if (viewModel.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                            contentDescription = if (viewModel.isPlaying) "Pause" else "Play",
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(28.dp)
-                        )
-                    }
-
-                    IconButton(onClick = {
-                        exoPlayer.stop()
-                        viewModel.currentPlayingFile = null
-                    }) {
-                        Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = "Close",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                }
-            }
-            
-            Spacer(modifier = Modifier.height(4.dp))
-            
-            Slider(
-                value = if (isSeeking) sliderValue else viewModel.playbackProgress,
-                onValueChange = {
-                    isSeeking = true
-                    sliderValue = it
-                },
-                onValueChangeFinished = {
-                    val targetPos = (sliderValue * exoPlayer.duration).toLong()
-                    exoPlayer.seekTo(targetPos)
-                    isSeeking = false
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(24.dp),
-                colors = SliderDefaults.colors(
-                    thumbColor = MaterialTheme.colorScheme.primary,
-                    activeTrackColor = MaterialTheme.colorScheme.primary,
-                    inactiveTrackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
                 )
-            )
+            }
         }
     }
 }
