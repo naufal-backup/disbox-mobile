@@ -189,7 +189,7 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    fun connect(url: String) {
+    fun connect(url: String, manualMessageId: String? = null) {
         pollJob?.cancel()
         isConnected = false
         allFiles = emptyList()
@@ -208,6 +208,9 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
         val newApi = DisboxApi(getApplication(), url)
         newApi.chunkSize = chunkSize
         newApi.onStatusChange = { metadataStatus = it }
+        if (manualMessageId != null) {
+            newApi.manualMessageId = manualMessageId
+        }
         api = newApi
 
         viewModelScope.launch {
