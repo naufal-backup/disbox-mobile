@@ -61,6 +61,19 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
     var cloudSaveEnabled by mutableStateOf(prefs.getBoolean("cloud_save_enabled", false))
     var animationsEnabled by mutableStateOf(prefs.getBoolean("animations_enabled", true))
 
+    var accentColor by mutableStateOf(prefs.getString("accent_color", "#5865F2") ?: "#5865F2")
+    var savedWebhooks by mutableStateOf(prefs.getStringSet("saved_webhooks", emptySet()) ?: emptySet())
+
+    fun updateAccentColor(color: String) {
+        accentColor = color
+        prefs.edit().putString("accent_color", color).apply()
+    }
+
+    fun removeWebhook(url: String) {
+        savedWebhooks = savedWebhooks.toMutableSet().apply { remove(url) }
+        prefs.edit().putStringSet("saved_webhooks", savedWebhooks).apply()
+    }
+
     fun updatePreviews(show: Boolean) {
         showPreviews = show
         prefs.edit().putBoolean("show_previews", show).apply()
@@ -203,6 +216,11 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
                 newApi.init()
                 allFiles = newApi.getFileSystem()
                 isConnected = true
+                
+                // Save to webhooks history
+                savedWebhooks = savedWebhooks.toMutableSet().apply { add(url) }
+                prefs.edit().putStringSet("saved_webhooks", savedWebhooks).apply()
+
                 loadShareData()
                 startPolling()
             } catch (e: Exception) {

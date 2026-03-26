@@ -2124,6 +2124,33 @@ fun SettingsScreen(viewModel: DisboxViewModel) {
             }
         }
 
+        Card(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+            Column(Modifier.padding(20.dp)) {
+                Text(viewModel.t("saved_webhooks_count", mapOf("count" to viewModel.savedWebhooks.size.toString())), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(bottom = 12.dp))
+                viewModel.savedWebhooks.forEach { savedUrl ->
+                    Row(
+                        Modifier.fillMaxWidth().padding(vertical = 4.dp).combinedClickable(
+                            onClick = { viewModel.connect(savedUrl) },
+                            onLongClick = { viewModel.removeWebhook(savedUrl) }
+                        ).padding(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Link, null, tint = if(viewModel.webhookUrl == savedUrl) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(0.4f), modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(12.dp))
+                        Text(
+                            (savedUrl?.take(30) ?: "") + if((savedUrl?.length ?: 0) > 30) "..." else "",
+                            fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            color = if(viewModel.webhookUrl == savedUrl) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.weight(1f)
+                        )
+                        if (viewModel.webhookUrl == savedUrl) {
+                            Icon(Icons.Default.CheckCircle, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                        }
+                    }
+                }
+            }
+        }
+
         Card(modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
             Column(Modifier.padding(20.dp)) {
                 Text(viewModel.t("account"), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(bottom = 12.dp))
