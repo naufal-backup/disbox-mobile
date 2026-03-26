@@ -317,7 +317,7 @@ fun DisboxApp(viewModel: DisboxViewModel, onFinish: () -> Unit) {
             Scaffold(
                 containerColor = MaterialTheme.colorScheme.background,
                 bottomBar = {
-                    NavigationBar(containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp) {
+                    NavigationBar(containerColor = MaterialTheme.colorScheme.background, tonalElevation = 0.dp) {
                         tabIds.forEachIndexed { index, id ->
                             NavigationBarItem(
                                 icon = { Icon(icons[index], contentDescription = tabs[index]) },
@@ -371,38 +371,44 @@ fun CloudSaveScreen(viewModel: DisboxViewModel) {
         viewModel.refresh()
     }
 
-    Column(Modifier.fillMaxSize().padding(16.dp)) {
-        Text(viewModel.t("cloud_save"), fontSize = 24.sp, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(16.dp))
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        item {
+            Text(viewModel.t("cloud_save"), fontSize = 24.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(16.dp))
+        }
         
         if (cloudSaveFolders.isEmpty()) {
-            Box(Modifier.fillMaxSize(), Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Default.CloudOff, null, Modifier.size(64.dp), Color.Gray.copy(alpha = 0.5f))
-                    Spacer(Modifier.height(16.dp))
-                    Text(viewModel.t("no_cloud_saves"), color = Color.Gray)
+            item {
+                Box(Modifier.fillParentMaxHeight(0.7f).fillMaxWidth(), Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(Icons.Default.CloudOff, null, Modifier.size(64.dp), Color.Gray.copy(alpha = 0.5f))
+                        Spacer(Modifier.height(16.dp))
+                        Text(viewModel.t("no_cloud_saves"), color = Color.Gray)
+                    }
                 }
             }
         } else {
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(cloudSaveFolders) { folder ->
-                    Card(
-                        Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+            items(cloudSaveFolders) { folder ->
+                Card(
+                    Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                ) {
+                    Row(
+                        Modifier.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(
-                            Modifier.padding(16.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(Icons.Default.Folder, null, tint = Color(0xFFF0A500))
-                            Spacer(Modifier.width(16.dp))
-                            Text(folder, Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
-                            IconButton(onClick = { folderToExport = folder }) {
-                                Icon(Icons.Default.Download, viewModel.t("export_zip"))
-                            }
-                            IconButton(onClick = { folderToDelete = folder }) {
-                                Icon(Icons.Default.Delete, viewModel.t("delete"), tint = MaterialTheme.colorScheme.error)
-                            }
+                        Icon(Icons.Default.Folder, null, tint = Color(0xFFF0A500))
+                        Spacer(Modifier.width(16.dp))
+                        Text(folder, Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
+                        IconButton(onClick = { folderToExport = folder }) {
+                            Icon(Icons.Default.Download, viewModel.t("export_zip"))
+                        }
+                        IconButton(onClick = { folderToDelete = folder }) {
+                            Icon(Icons.Default.Delete, viewModel.t("delete"), tint = MaterialTheme.colorScheme.error)
                         }
                     }
                 }
@@ -1111,67 +1117,72 @@ fun SharedScreen(viewModel: DisboxViewModel) {
     var showRevokeAllConfirm by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
-    Column(Modifier.fillMaxSize().padding(16.dp)) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Text(viewModel.t("shared_by_me"), fontSize = 24.sp, fontWeight = FontWeight.Bold)
-            if (viewModel.shareLinks.isNotEmpty()) {
-                TextButton(
-                    onClick = { showRevokeAllConfirm = true },
-                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
-                ) {
-                    Icon(Icons.Default.DeleteSweep, null, Modifier.size(18.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text(viewModel.t("revoke_all"))
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        item {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text(viewModel.t("shared_by_me"), fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                if (viewModel.shareLinks.isNotEmpty()) {
+                    TextButton(
+                        onClick = { showRevokeAllConfirm = true },
+                        colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                    ) {
+                        Icon(Icons.Default.DeleteSweep, null, Modifier.size(18.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text(viewModel.t("revoke_all"))
+                    }
                 }
             }
+            Spacer(Modifier.height(16.dp))
         }
-        
-        Spacer(Modifier.height(16.dp))
 
         if (viewModel.shareLinks.isEmpty()) {
-            Box(Modifier.fillMaxSize(), Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Default.LinkOff, null, Modifier.size(64.dp), Color.Gray.copy(alpha = 0.5f))
-                    Spacer(Modifier.height(16.dp))
-                    Text(viewModel.t("no_shared_links"), fontWeight = FontWeight.Bold)
-                    Text(viewModel.t("shared_hint"), fontSize = 12.sp, color = Color.Gray)
+            item {
+                Box(Modifier.fillParentMaxHeight(0.7f).fillMaxWidth(), Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(Icons.Default.LinkOff, null, Modifier.size(64.dp), Color.Gray.copy(alpha = 0.5f))
+                        Spacer(Modifier.height(16.dp))
+                        Text(viewModel.t("no_shared_links"), fontWeight = FontWeight.Bold)
+                        Text(viewModel.t("shared_hint"), fontSize = 12.sp, color = Color.Gray)
+                    }
                 }
             }
         } else {
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(viewModel.shareLinks) { link ->
-                    val fileName = link.file_path.split("/").last()
-                    Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
-                        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Box(Modifier.size(40.dp).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f), CircleShape), Alignment.Center) {
-                                Text(getFileIcon(fileName), fontSize = 20.sp)
+            items(viewModel.shareLinks) { link ->
+                val fileName = link.file_path.split("/").last()
+                Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+                    Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(40.dp).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f), CircleShape), Alignment.Center) {
+                            Text(getFileIcon(fileName), fontSize = 20.sp)
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(fileName, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    if (link.permission == "download") viewModel.t("download_perm") else viewModel.t("view_only"),
+                                    fontSize = 10.sp, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold
+                                )
+                                val expiryText = if (link.expires_at == null) viewModel.t("permanent")
+                                    else {
+                                        val diff = link.expires_at - System.currentTimeMillis()
+                                        if (diff <= 0) viewModel.t("expired")
+                                        else viewModel.t("days_left", mapOf("days" to (Math.ceil(diff.toDouble() / (24 * 3600 * 1000)).toInt().toString())))
+                                    }
+                                Text(expiryText, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
                             }
-                            Spacer(Modifier.width(12.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text(fileName, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Text(
-                                        if (link.permission == "download") viewModel.t("download_perm") else viewModel.t("view_only"),
-                                        fontSize = 10.sp, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold
-                                    )
-                                    val expiryText = if (link.expires_at == null) viewModel.t("permanent")
-                                        else {
-                                            val diff = link.expires_at - System.currentTimeMillis()
-                                            if (diff <= 0) viewModel.t("expired")
-                                            else viewModel.t("days_left", mapOf("days" to (Math.ceil(diff.toDouble() / (24 * 3600 * 1000)).toInt().toString())))
-                                        }
-                                    Text(expiryText, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
-                                }
-                            }
-                            IconButton(onClick = {
-                                val fullUrl = "${viewModel.cfWorkerUrl}/share/${link.token}"
-                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                                clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Disbox Link", fullUrl))
-                                android.widget.Toast.makeText(context, viewModel.t("copy_link"), android.widget.Toast.LENGTH_SHORT).show()
-                            }) { Icon(Icons.Default.ContentCopy, null, Modifier.size(18.dp)) }
-                            IconButton(onClick = { viewModel.revokeShareLink(link.id, link.token) }) {
-                                Icon(Icons.Default.LinkOff, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error)
-                            }
+                        }
+                        IconButton(onClick = {
+                            val fullUrl = "${viewModel.cfWorkerUrl}/share/${link.token}"
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                            clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Disbox Link", fullUrl))
+                            android.widget.Toast.makeText(context, viewModel.t("copy_link"), android.widget.Toast.LENGTH_SHORT).show()
+                        }) { Icon(Icons.Default.ContentCopy, null, Modifier.size(18.dp)) }
+                        IconButton(onClick = { viewModel.revokeShareLink(link.id, link.token) }) {
+                            Icon(Icons.Default.LinkOff, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error)
                         }
                     }
                 }
@@ -1546,7 +1557,7 @@ fun SettingsScreen(viewModel: DisboxViewModel) {
         else "%.2f GB".format(gb)
     }
 
-    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(24.dp).verticalScroll(rememberScrollState())) {
+    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).verticalScroll(rememberScrollState()).padding(24.dp)) {
         Text(viewModel.t("settings"), fontSize = 28.sp, fontWeight = FontWeight.ExtraBold)
         Spacer(Modifier.height(32.dp))
 
