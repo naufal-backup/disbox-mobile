@@ -17,6 +17,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -42,6 +43,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -59,6 +61,7 @@ import coil.compose.AsyncImage
 import coil.decode.VideoFrameDecoder
 import coil.request.ImageRequest
 import com.disbox.mobile.ui.theme.DisboxMobileTheme
+import kotlinx.coroutines.delay
 import java.io.File
 import java.util.UUID
 
@@ -150,17 +153,24 @@ fun isVideoFile(name: String): Boolean {
     return listOf("mp4", "mkv", "mov", "avi", "webm").contains(ext)
 }
 
+fun isAudioFile(name: String): Boolean {
+    val ext = name.split(".").last().lowercase()
+    return listOf("mp3", "wav", "flac", "ogg", "m4a").contains(ext)
+}
+
 @Composable
 fun FileThumbnail(file: DisboxFile, viewModel: DisboxViewModel, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val name = file.path.split("/").last()
     val isImage = isImageFile(name)
     val isVideo = isVideoFile(name)
+    val isAudio = isAudioFile(name)
     var thumbFile by remember { mutableStateOf<File?>(null) }
+    var audioArt by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
     var isLoading by remember { mutableStateOf(false) }
 
     val isPreviewEnabled = viewModel.showPreviews && (
-        (isImage && viewModel.showImagePreviews) || (isVideo && viewModel.showVideoPreviews)
+        (isImage && viewModel.showImagePreviews) || (isVideo && viewModel.showVideoPreviews) || (isAudio && viewModel.showMusicPreviews)
     )
 
     val cacheKey = "thumb_${file.id}"
@@ -169,10 +179,22 @@ fun FileThumbnail(file: DisboxFile, viewModel: DisboxViewModel, modifier: Modifi
     LaunchedEffect(file.id, isPreviewEnabled) {
         if (!isPreviewEnabled) {
             thumbFile = null
+            audioArt = null
             return@LaunchedEffect
         }
         if (targetFile.exists()) {
             thumbFile = targetFile
+            if (isAudio && audioArt == null) {
+                try {
+                    val retriever = android.media.MediaMetadataRetriever()
+                    retriever.setDataSource(targetFile.absolutePath)
+                    val art = retriever.embeddedPicture
+                    if (art != null) {
+                        audioArt = android.graphics.BitmapFactory.decodeByteArray(art, 0, art.size)
+                    }
+                    retriever.release()
+                } catch (e: Exception) { e.printStackTrace() }
+            }
             return@LaunchedEffect
         }
         isLoading = true
@@ -180,6 +202,15 @@ fun FileThumbnail(file: DisboxFile, viewModel: DisboxViewModel, modifier: Modifi
             viewModel.api?.downloadFile(file, targetFile) { }
             if (targetFile.exists()) {
                 thumbFile = targetFile
+                if (isAudio) {
+                    val retriever = android.media.MediaMetadataRetriever()
+                    retriever.setDataSource(targetFile.absolutePath)
+                    val art = retriever.embeddedPicture
+                    if (art != null) {
+                        audioArt = android.graphics.BitmapFactory.decodeByteArray(art, 0, art.size)
+                    }
+                    retriever.release()
+                }
             }
         } catch (e: Exception) {
             e.printStackTrace()
@@ -191,24 +222,34 @@ fun FileThumbnail(file: DisboxFile, viewModel: DisboxViewModel, modifier: Modifi
     Box(modifier = modifier, contentAlignment = Alignment.Center) {
         if (thumbFile != null) {
             Box(contentAlignment = Alignment.Center) {
-                AsyncImage(
-                    model = ImageRequest.Builder(context)
-                        .data(thumbFile)
-                        .decoderFactory(VideoFrameDecoder.Factory())
-                        .crossfade(true)
-                        .build(),
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = androidx.compose.ui.layout.ContentScale.Crop
-                )
-                if (isVideo) {
+                if (isAudio && audioArt != null) {
+                    androidx.compose.foundation.Image(
+                        bitmap = audioArt!!.asImageBitmap(),
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                    )
+                } else {
+                    AsyncImage(
+                        model = ImageRequest.Builder(context)
+                            .data(thumbFile)
+                            .decoderFactory(VideoFrameDecoder.Factory())
+                            .crossfade(true)
+                            .build(),
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                    )
+                }
+                
+                if (isVideo || isAudio) {
                     Box(
                         Modifier
                             .size(20.dp)
                             .background(Color.Black.copy(alpha = 0.5f), CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(Icons.Default.PlayArrow, null, tint = Color.White, modifier = Modifier.size(14.dp))
+                        Icon(if (isVideo) Icons.Default.PlayArrow else Icons.Default.MusicNote, null, tint = Color.White, modifier = Modifier.size(14.dp))
                     }
                 }
             }
@@ -217,6 +258,206 @@ fun FileThumbnail(file: DisboxFile, viewModel: DisboxViewModel, modifier: Modifi
         } else {
             Text(getFileIcon(name), fontSize = 24.sp)
         }
+    }
+}
+
+@Composable
+fun MusicPlayerBar(exoPlayer: ExoPlayer, viewModel: DisboxViewModel) {
+    val currentFile = viewModel.currentPlayingFile ?: return
+    val context = LocalContext.current
+    val fileName = currentFile.path.split("/").last()
+    var songTitle by remember { mutableStateOf(fileName) }
+    var albumArt by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
+    var isSeeking by remember { mutableStateOf(false) }
+    var sliderValue by remember { mutableStateOf(0f) }
+    val notificationHelper = remember { NotificationHelper(context) }
+    
+    LaunchedEffect(currentFile.id) {
+        // Try to get title and art from metadata
+        val cacheKey = "thumb_${currentFile.id}"
+        val targetFile = File(context.cacheDir, cacheKey)
+        if (targetFile.exists()) {
+            try {
+                val retriever = android.media.MediaMetadataRetriever()
+                retriever.setDataSource(targetFile.absolutePath)
+                val title = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_TITLE)
+                val artist = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_ARTIST)
+                val art = retriever.embeddedPicture
+                if (art != null) {
+                    albumArt = android.graphics.BitmapFactory.decodeByteArray(art, 0, art.size)
+                } else {
+                    albumArt = null
+                }
+                if (!title.isNullOrBlank()) {
+                    songTitle = if (!artist.isNullOrBlank()) "$title - $artist" else title
+                } else {
+                    songTitle = fileName
+                }
+                retriever.release()
+            } catch (e: Exception) { 
+                songTitle = fileName
+                albumArt = null
+                e.printStackTrace() 
+            }
+        } else {
+            songTitle = fileName
+            albumArt = null
+        }
+    }
+
+    LaunchedEffect(songTitle, viewModel.isPlaying, albumArt) {
+        notificationHelper.showMediaNotification(songTitle, viewModel.isPlaying, albumArt)
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            notificationHelper.cancelMediaNotification()
+        }
+    }
+
+    LaunchedEffect(exoPlayer) {
+        while (true) {
+            if (exoPlayer.isPlaying && !isSeeking) {
+                viewModel.playbackPosition = exoPlayer.currentPosition
+                viewModel.playbackDuration = exoPlayer.duration.coerceAtLeast(0)
+                if (viewModel.playbackDuration > 0) {
+                    viewModel.playbackProgress = viewModel.playbackPosition.toFloat() / viewModel.playbackDuration
+                    sliderValue = viewModel.playbackProgress
+                }
+            }
+            delay(500)
+        }
+    }
+
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surface, // Opaque background
+        tonalElevation = 8.dp,
+        shadowElevation = 4.dp
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(16.dp))
+                .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.1f), RoundedCornerShape(16.dp))
+        ) {
+            Column(modifier = Modifier.padding(12.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        key(currentFile.id) {
+                            FileThumbnail(currentFile, viewModel, Modifier.fillMaxSize())
+                        }
+                    }
+                    
+                    Spacer(modifier = Modifier.width(12.dp))
+                    
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = songTitle,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = "${formatTime(viewModel.playbackPosition)} / ${formatTime(viewModel.playbackDuration)}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                        )
+                    }
+                    
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = {
+                            viewModel.updateRepeatMode((viewModel.repeatMode + 1) % 3)
+                        }) {
+                            Icon(
+                                imageVector = when(viewModel.repeatMode) {
+                                    1 -> Icons.Default.RepeatOne
+                                    2 -> Icons.Default.Repeat
+                                    else -> Icons.Default.Repeat
+                                },
+                                contentDescription = "Repeat",
+                                tint = if (viewModel.repeatMode > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+
+                        IconButton(onClick = {
+                            if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play()
+                        }) {
+                            Icon(
+                                imageVector = if (viewModel.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                contentDescription = if (viewModel.isPlaying) "Pause" else "Play",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(28.dp)
+                            )
+                        }
+
+                        IconButton(onClick = {
+                            exoPlayer.stop()
+                            viewModel.currentPlayingFile = null
+                        }) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Close",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(4.dp))
+                
+                Slider(
+                    value = if (isSeeking) sliderValue else viewModel.playbackProgress,
+                    onValueChange = {
+                        isSeeking = true
+                        sliderValue = it
+                    },
+                    onValueChangeFinished = {
+                        val targetPos = (sliderValue * exoPlayer.duration).toLong()
+                        exoPlayer.seekTo(targetPos)
+                        isSeeking = false
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(24.dp),
+                    colors = SliderDefaults.colors(
+                        thumbColor = MaterialTheme.colorScheme.primary,
+                        activeTrackColor = MaterialTheme.colorScheme.primary,
+                        inactiveTrackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
+                    )
+                )
+            }
+        }
+    }
+}
+
+fun formatTime(ms: Long): String {
+    val totalSeconds = ms / 1000
+    val minutes = totalSeconds / 60
+    val seconds = totalSeconds % 60
+    return "%d:%02d".format(minutes, seconds)
+}
+
+fun formatSize(size: Long): String {
+    return if (size >= 1024 * 1024) {
+        "%.2f MB".format(size.toFloat() / (1024 * 1024))
+    } else {
+        "${size / 1024} KB"
     }
 }
 
@@ -303,7 +544,58 @@ fun DisboxApp(viewModel: DisboxViewModel, onFinish: () -> Unit) {
             else -> onFinish()
         }
     }
-    DisboxMobileTheme(darkTheme = viewModel.theme == "dark") {
+    DisboxMobileTheme(darkTheme = viewModel.theme == "dark", accentColor = viewModel.accentColor) {
+        val context = LocalContext.current
+        val musicPlayer = remember { ExoPlayer.Builder(context).build() }
+        
+        DisposableEffect(musicPlayer) {
+            onDispose { musicPlayer.release() }
+        }
+
+        LaunchedEffect(musicPlayer) {
+            musicPlayer.addListener(object : androidx.media3.common.Player.Listener {
+                override fun onIsPlayingChanged(isPlaying: Boolean) {
+                    viewModel.isPlaying = isPlaying
+                }
+                override fun onPlaybackStateChanged(state: Int) {
+                    if (state == androidx.media3.common.Player.STATE_ENDED) {
+                        when (viewModel.repeatMode) {
+                            1 -> { // Repeat One
+                                musicPlayer.seekTo(0)
+                                musicPlayer.play()
+                            }
+                            2 -> { // Repeat All (for mobile, usually same as one if only one file, but let's just repeat for now)
+                                musicPlayer.seekTo(0)
+                                musicPlayer.play()
+                            }
+                            else -> {
+                                viewModel.currentPlayingFile = null
+                            }
+                        }
+                    }
+                }
+            })
+        }
+
+        LaunchedEffect(viewModel.currentPlayingFile) {
+            val file = viewModel.currentPlayingFile
+            if (file != null) {
+                val api = viewModel.api
+                if (api != null) {
+                    val name = file.path.split("/").last()
+                    val ext = name.split(".").last().lowercase()
+                    val dataSourceFactory = DiscordDataSourceFactory(api, file)
+                    val mediaSource = androidx.media3.exoplayer.source.ProgressiveMediaSource.Factory(dataSourceFactory)
+                        .createMediaSource(MediaItem.fromUri("disbox-music://${file.id}.$ext"))
+                    musicPlayer.setMediaSource(mediaSource)
+                    musicPlayer.prepare()
+                    musicPlayer.playWhenReady = true
+                }
+            } else {
+                musicPlayer.stop()
+            }
+        }
+
         if (!viewModel.isConnected && !viewModel.isLoading) LoginScreen(viewModel)
         else if (viewModel.isLoading && !viewModel.isConnected) {
             Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background), Alignment.Center) {
@@ -317,7 +609,10 @@ fun DisboxApp(viewModel: DisboxViewModel, onFinish: () -> Unit) {
             Scaffold(
                 containerColor = MaterialTheme.colorScheme.background,
                 bottomBar = {
-                    NavigationBar(containerColor = MaterialTheme.colorScheme.background, tonalElevation = 0.dp) {
+                    NavigationBar(
+                        containerColor = MaterialTheme.colorScheme.background, // Match background to prevent "bar" effect
+                        tonalElevation = 0.dp
+                    ) {
                         tabIds.forEachIndexed { index, id ->
                             NavigationBarItem(
                                 icon = { Icon(icons[index], contentDescription = tabs[index]) },
@@ -329,16 +624,28 @@ fun DisboxApp(viewModel: DisboxViewModel, onFinish: () -> Unit) {
                     }
                 }
             ) { padding ->
-                Box(Modifier.padding(padding)) {
-                    when (viewModel.activePage) {
-                        "drive" -> DriveScreen(viewModel)
-                        "recent" -> DriveScreen(viewModel, isRecentView = true)
-                        "starred" -> DriveScreen(viewModel, isStarredView = true)
-                        "locked" -> if (viewModel.isVerified) DriveScreen(viewModel, isLockedView = true) else LockedGateway(viewModel)
-                        "cloud-save" -> CloudSaveScreen(viewModel)
-                        "shared" -> SharedScreen(viewModel)
-                        "settings" -> SettingsScreen(viewModel)
-                        else -> PlaceholderScreen(viewModel.activePage)
+                Box(Modifier.padding(padding).fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+                    Column(Modifier.fillMaxSize()) {
+                        // Content Area
+                        Box(Modifier.weight(1f)) {
+                            when (viewModel.activePage) {
+                                "drive" -> DriveScreen(viewModel)
+                                "recent" -> DriveScreen(viewModel, isRecentView = true)
+                                "starred" -> DriveScreen(viewModel, isStarredView = true)
+                                "locked" -> if (viewModel.isVerified) DriveScreen(viewModel, isLockedView = true) else LockedGateway(viewModel)
+                                "cloud-save" -> CloudSaveScreen(viewModel)
+                                "shared" -> SharedScreen(viewModel)
+                                "settings" -> SettingsScreen(viewModel)
+                                else -> PlaceholderScreen(viewModel.activePage)
+                            }
+                        }
+                        
+                        // Floating Music Bar Space (internal to scaffold body)
+                        if (viewModel.currentPlayingFile != null) {
+                            Box(Modifier.padding(bottom = 12.dp)) {
+                                MusicPlayerBar(musicPlayer, viewModel)
+                            }
+                        }
                     }
                     
                     if (viewModel.isLoading) {
@@ -588,11 +895,15 @@ fun PinPromptModal(title: String, onVerified: () -> Unit, onCancel: () -> Unit, 
     )
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun LoginScreen(viewModel: DisboxViewModel) {
     var url by remember { mutableStateOf(viewModel.webhookUrl) }
+    var msgId by remember { mutableStateOf("") }
+    var showAdvanced by remember { mutableStateOf(false) }
+    
     Column(
-        modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(32.dp),
+        modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(32.dp).verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -601,10 +912,61 @@ fun LoginScreen(viewModel: DisboxViewModel) {
         }
         Spacer(Modifier.height(24.dp)); Text("Disbox", fontSize = 32.sp, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onBackground)
         Text(viewModel.t("subtitle"), fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+        
+        if (viewModel.savedWebhooks.isNotEmpty()) {
+            Spacer(Modifier.height(32.dp))
+            Text(viewModel.t("saved_webhooks_count", mapOf("count" to viewModel.savedWebhooks.size.toString())), 
+                fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, 
+                modifier = Modifier.align(Alignment.Start))
+            Spacer(Modifier.height(8.dp))
+            
+            viewModel.savedWebhooks.forEach { savedUrl ->
+                Card(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).combinedClickable(
+                        onClick = { url = savedUrl; viewModel.connect(savedUrl) },
+                        onLongClick = { viewModel.removeWebhook(savedUrl) }
+                    ),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                ) {
+                    Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Link, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(12.dp))
+                        Text(
+                            savedUrl.take(40) + if(savedUrl.length > 40) "..." else "", 
+                            fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            color = if(url == savedUrl) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+            }
+        }
+
         Spacer(Modifier.height(32.dp))
         OutlinedTextField(value = url, onValueChange = { url = it }, label = { Text(viewModel.t("webhook_url")) }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(10.dp))
-        Spacer(Modifier.height(24.dp))
-        Button(onClick = { viewModel.connect(url) }, modifier = Modifier.fillMaxWidth().height(56.dp), shape = RoundedCornerShape(10.dp), enabled = !viewModel.isLoading) {
+        
+        Spacer(Modifier.height(8.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start) {
+            TextButton(onClick = { showAdvanced = !showAdvanced }) {
+                Text(if (showAdvanced) "Hide Advanced" else "Advanced Options (Manual Sync)", fontSize = 12.sp)
+            }
+        }
+        
+        if (showAdvanced) {
+            OutlinedTextField(
+                value = msgId, 
+                onValueChange = { msgId = it }, 
+                label = { Text("Metadata Message ID (Optional)") }, 
+                modifier = Modifier.fillMaxWidth(), 
+                shape = RoundedCornerShape(10.dp),
+                placeholder = { Text("e.g. 123456789012345678") }
+            )
+            Text("Use this if your file list is empty or doesn't sync automatically.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f), modifier = Modifier.padding(top = 4.dp))
+            Spacer(Modifier.height(16.dp))
+        } else {
+            Spacer(Modifier.height(16.dp))
+        }
+
+        Button(onClick = { viewModel.connect(url, msgId.ifBlank { null }) }, modifier = Modifier.fillMaxWidth().height(56.dp), shape = RoundedCornerShape(10.dp), enabled = !viewModel.isLoading) {
             if (viewModel.isLoading) CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp))
             else Text(viewModel.t("connect_drive"), fontWeight = FontWeight.Bold)
         }
@@ -778,30 +1140,31 @@ fun DriveScreen(viewModel: DisboxViewModel, isLockedView: Boolean = false, isSta
                                 expanded = showSelectionMenu,
                                 onDismissRequest = { showSelectionMenu = false }
                             ) {
-                                if (isSingleSelect && firstFile != null) {
-                                    DropdownMenuItem(
-                                        text = { Text(viewModel.t("download")) },
-                                        leadingIcon = { Icon(Icons.Default.Download, null) },
-                                        onClick = {
-                                            showSelectionMenu = false
-                                            viewModel.downloadFile(firstFile)
-                                        }
-                                    )
+                                if (isSingleSelect && selectedItems.isNotEmpty()) {
+                                    val item = selectedItems.first()
+                                    val isFolder = item.path.endsWith("/.keep") || item.path == ".keep"
+                                    
+                                    if (!isFolder) {
+                                        DropdownMenuItem(
+                                            text = { Text(viewModel.t("download")) },
+                                            leadingIcon = { Icon(Icons.Default.Download, null) },
+                                            onClick = {
+                                                showSelectionMenu = false
+                                                viewModel.downloadFile(item)
+                                            }
+                                        )
+                                    }
                                     DropdownMenuItem(
                                         text = { Text(viewModel.t("rename")) },
                                         leadingIcon = { Icon(Icons.Default.Edit, null) },
                                         onClick = {
                                             showSelectionMenu = false
-                                            val item = selectedItems.firstOrNull()
-                                            if (item != null) {
-                                                val isFolder = item.path.endsWith("/.keep")
-                                                val oldPath = if (isFolder) item.path.removeSuffix("/.keep") else item.path
-                                                val oldName = oldPath.split("/").last()
-                                                
-                                                itemToRename = oldName to oldPath // Always store the full path
-                                                newName = oldName
-                                                showRenameDialog = true
-                                            }
+                                            val oldPath = if (isFolder) item.path.removeSuffix("/.keep").ifEmpty { "" } else item.path
+                                            val oldName = if (oldPath.isEmpty()) "/" else oldPath.split("/").last()
+                                            
+                                            itemToRename = oldName to oldPath
+                                            newName = oldName
+                                            showRenameDialog = true
                                         }
                                     )
                                     if (viewModel.shareEnabled) {
@@ -810,10 +1173,7 @@ fun DriveScreen(viewModel: DisboxViewModel, isLockedView: Boolean = false, isSta
                                             leadingIcon = { Icon(Icons.Default.Link, null) },
                                             onClick = {
                                                 showSelectionMenu = false
-                                                val item = selectedItems.firstOrNull()
-                                                if (item != null) {
-                                                    showShareDialog = item.path to item.id
-                                                }
+                                                showShareDialog = item.path to item.id
                                             }
                                         )
                                     }
@@ -938,9 +1298,13 @@ fun DriveScreen(viewModel: DisboxViewModel, isLockedView: Boolean = false, isSta
                             if (isLocked && !viewModel.isVerified) pinPrompt = { viewModel.navigate("/$path") } else viewModel.navigate("/$path")
                         }
                     } }
-                    items(currentFiles) { f -> FileItemGrid(f, viewModel) { 
+                    items(currentFiles) { f -> FileItemGrid(f, viewModel) {
                         if (viewModel.selectionSet.isNotEmpty()) viewModel.toggleSelection(f.id)
-                        else if (f.isLocked && !viewModel.isVerified) pinPrompt = { previewFile = f } else previewFile = f 
+                        else if (f.isLocked && !viewModel.isVerified) pinPrompt = { 
+                            if (isAudioFile(f.path)) viewModel.currentPlayingFile = f else previewFile = f 
+                        } else {
+                            if (isAudioFile(f.path)) viewModel.currentPlayingFile = f else previewFile = f
+                        }
                     } }
                 }
             } else {
@@ -952,9 +1316,13 @@ fun DriveScreen(viewModel: DisboxViewModel, isLockedView: Boolean = false, isSta
                             if (isLocked && !viewModel.isVerified) pinPrompt = { viewModel.navigate("/$path") } else viewModel.navigate("/$path")
                         }
                     } }
-                    items(currentFiles) { f -> FileItemList(f, viewModel) { 
+                    items(currentFiles) { f -> FileItemList(f, viewModel) {
                         if (viewModel.selectionSet.isNotEmpty()) viewModel.toggleSelection(f.id)
-                        else if (f.isLocked && !viewModel.isVerified) pinPrompt = { previewFile = f } else previewFile = f 
+                        else if (f.isLocked && !viewModel.isVerified) pinPrompt = { 
+                            if (isAudioFile(f.path)) viewModel.currentPlayingFile = f else previewFile = f 
+                        } else {
+                            if (isAudioFile(f.path)) viewModel.currentPlayingFile = f else previewFile = f
+                        }
                     } }
                 }
             }
@@ -1281,7 +1649,7 @@ fun FilePreviewScreen(
                         fontSize = 14.sp
                     )
                     Text(
-                        "${currentFile.size / 1024} KB",
+                        formatSize(currentFile.size),
                         fontSize = 10.sp,
                         color = Color.White.copy(alpha = 0.6f)
                     )
@@ -1499,7 +1867,7 @@ fun ListFileItem(file: DisboxFile?, name: String, isFolder: Boolean, size: Long 
                 Text(name, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface, fontSize = 14.sp * zoom, modifier = Modifier.weight(1f, false))
                 if (isStarred) { Spacer(modifier = Modifier.width(4.dp)); Icon(Icons.Default.Star, contentDescription = null, tint = Color(0xFFF0A500), modifier = Modifier.size(12.dp * zoom)) }
             }
-            Text(if (isFolder) viewModel.t("folder") else "${size / 1024} KB", fontSize = 11.sp * zoom, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
+            Text(if (isFolder) viewModel.t("folder") else formatSize(size), fontSize = 11.sp * zoom, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
         }
     }
 }
@@ -1519,7 +1887,7 @@ fun GridFileItem(file: DisboxFile?, name: String, isFolder: Boolean, size: Long 
             }
             Spacer(Modifier.height(6.dp))
             Text(name, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis, color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface, fontSize = 11.sp * zoom, textAlign = TextAlign.Center)
-            Text(if (isFolder) viewModel.t("folder") else "${size / 1024} KB", fontSize = 9.sp * zoom, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
+            Text(if (isFolder) viewModel.t("folder") else formatSize(size), fontSize = 9.sp * zoom, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
         }
     }
 }
@@ -1543,6 +1911,7 @@ fun TransferPanel(progressMap: Map<String, Float>, viewModel: DisboxViewModel) {
     }
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun SettingsScreen(viewModel: DisboxViewModel) {
     val CHUNK_OPTIONS = listOf(Triple("Free (10MB)", 10 * 1024 * 1024, viewModel.t("chunk_free_desc")), Triple("Nitro (25MB)", 25 * 1024 * 1024, viewModel.t("chunk_nitro_desc")), Triple("Premium (500MB)", 500 * 1024 * 1024, viewModel.t("chunk_premium_desc")))
@@ -1587,6 +1956,25 @@ fun SettingsScreen(viewModel: DisboxViewModel) {
 
         Card(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
             Column(Modifier.padding(20.dp)) {
+                Text(viewModel.t("accent_color"), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(bottom = 12.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    listOf("#5865F2", "#00D4AA", "#F0A500", "#ED4245", "#EB459E", "#9B59B6").forEach { colorHex ->
+                        val color = Color(android.graphics.Color.parseColor(colorHex))
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(CircleShape)
+                                .background(color)
+                                .border(2.dp, if(viewModel.accentColor == colorHex) MaterialTheme.colorScheme.onSurface else Color.Transparent, CircleShape)
+                                .clickable { viewModel.updateAccentColor(colorHex) }
+                        )
+                    }
+                }
+            }
+        }
+
+        Card(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+            Column(Modifier.padding(20.dp)) {
                 Text(viewModel.t("app_behavior"), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(bottom = 12.dp))
                 Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), Arrangement.SpaceBetween, Alignment.CenterVertically) {
                     Column { Text(viewModel.t("dark"), fontWeight = FontWeight.Bold); Text(viewModel.t("theme"), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface.copy(0.6f)) }
@@ -1605,6 +1993,10 @@ fun SettingsScreen(viewModel: DisboxViewModel) {
                         Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), Arrangement.SpaceBetween, Alignment.CenterVertically) {
                             Text(viewModel.t("video_previews"), fontSize = 13.sp)
                             Switch(viewModel.showVideoPreviews, { viewModel.updateVideoPreviews(it) }, modifier = Modifier.scale(0.8f))
+                        }
+                        Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), Arrangement.SpaceBetween, Alignment.CenterVertically) {
+                            Text(viewModel.t("music_previews"), fontSize = 13.sp)
+                            Switch(viewModel.showMusicPreviews, { viewModel.updateMusicPreviews(it) }, modifier = Modifier.scale(0.8f))
                         }
                     }
                 }
@@ -1703,6 +2095,35 @@ fun SettingsScreen(viewModel: DisboxViewModel) {
             }
         }
 
+        if (viewModel.savedWebhooks.isNotEmpty()) {
+            Card(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+                Column(Modifier.padding(20.dp)) {
+                    Text(viewModel.t("saved_webhooks_count", mapOf("count" to viewModel.savedWebhooks.size.toString())), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(bottom = 12.dp))
+                    viewModel.savedWebhooks.forEach { savedUrl ->
+                        Row(
+                            Modifier.fillMaxWidth().padding(vertical = 4.dp).combinedClickable(
+                                onClick = { viewModel.connect(savedUrl) },
+                                onLongClick = { viewModel.removeWebhook(savedUrl) }
+                            ).padding(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.Link, null, tint = if(viewModel.webhookUrl == savedUrl) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(0.4f), modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(12.dp))
+                            Text(
+                                savedUrl.take(30) + if(savedUrl.length > 30) "..." else "",
+                                fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                color = if(viewModel.webhookUrl == savedUrl) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.weight(1f)
+                            )
+                            if (viewModel.webhookUrl == savedUrl) {
+                                Icon(Icons.Default.CheckCircle, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         Card(modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
             Column(Modifier.padding(20.dp)) {
                 Text(viewModel.t("account"), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(bottom = 12.dp))
@@ -1713,6 +2134,7 @@ fun SettingsScreen(viewModel: DisboxViewModel) {
         }
         
         Text("Disbox Mobile ${viewModel.latestVersion}", modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface.copy(0.4f))
+        Spacer(Modifier.height(100.dp))
     }
     if (showPinDialog != null) PinSettingsDialog(showPinDialog!!, { showPinDialog = null; viewModel.checkHasPin { hasPin = it } }, viewModel)
     if (showDisconnectConfirm) AlertDialog(onDismissRequest = { showDisconnectConfirm = false }, title = { Text(viewModel.t("disconnect")) }, text = { Text(viewModel.t("confirm_disconnect")) }, confirmButton = { Button(onClick = { viewModel.disconnect(); showDisconnectConfirm = false }, colors = ButtonDefaults.buttonColors(MaterialTheme.colorScheme.error)) { Text(viewModel.t("confirm")) } }, dismissButton = { TextButton(onClick = { showDisconnectConfirm = false }) { Text(viewModel.t("cancel")) } })
