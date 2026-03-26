@@ -11,11 +11,18 @@ object CryptoUtils {
     private const val IV_LENGTH = 12
     private const val TAG_LENGTH = 16 // bytes (128 bits)
 
+    fun normalizeUrl(url: String): String {
+        var normalized = url.split("?")[0].trim().trimEnd('/')
+        if (!normalized.startsWith("http")) normalized = "https://$normalized"
+        normalized = normalized.replace("discordapp.com", "discord.com")
+        return normalized
+    }
+
     fun deriveKey(webhookUrl: String): ByteArray {
-        // Desktop uses the base URL (before ?) for key derivation
-        val baseUrl = webhookUrl.split("?")[0]
+        // Normalize the URL to be consistent with Desktop and DisboxApi
+        val normalized = normalizeUrl(webhookUrl)
         val digest = MessageDigest.getInstance("SHA-256")
-        return digest.digest(baseUrl.toByteArray(Charsets.UTF_8))
+        return digest.digest(normalized.toByteArray(Charsets.UTF_8))
     }
 
     fun encrypt(data: ByteArray, key: ByteArray): ByteArray {

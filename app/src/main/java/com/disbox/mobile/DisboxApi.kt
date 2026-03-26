@@ -12,49 +12,52 @@ import java.io.File
 import java.io.FileOutputStream
 import java.security.MessageDigest
 import java.util.*
+import kotlin.text.Charsets
 import kotlinx.coroutines.withContext
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
 
+import com.google.gson.annotations.SerializedName
+
 data class DisboxFile(
-    val id: String = UUID.randomUUID().toString(),
-    var path: String,
-    val messageIds: List<String>,
-    val size: Long,
-    val createdAt: Long = System.currentTimeMillis(),
-    val isLocked: Boolean = false,
-    val isStarred: Boolean = false
+    @SerializedName("id") val id: String = UUID.randomUUID().toString(),
+    @SerializedName("path") var path: String,
+    @SerializedName("messageIds") val messageIds: List<String>,
+    @SerializedName("size") val size: Long,
+    @SerializedName("createdAt") val createdAt: Long = System.currentTimeMillis(),
+    @SerializedName("isLocked") val isLocked: Boolean = false,
+    @SerializedName("isStarred") val isStarred: Boolean = false
 )
 
 data class ShareLink(
-    val id: String,
-    val hash: String,
-    val file_path: String,
-    val file_id: String?,
-    val token: String,
-    val permission: String,
-    val expires_at: Long?,
-    val created_at: Long
+    @SerializedName("id") val id: String,
+    @SerializedName("hash") val hash: String,
+    @SerializedName("file_path") val file_path: String,
+    @SerializedName("file_id") val file_id: String?,
+    @SerializedName("token") val token: String,
+    @SerializedName("permission") val permission: String,
+    @SerializedName("expires_at") val expires_at: Long?,
+    @SerializedName("created_at") val created_at: Long
 )
 
 data class ShareSettings(
-    val hash: String,
-    val mode: String = "public",
-    val cf_worker_url: String?,
-    val cf_api_token: String?,
-    val webhook_url: String?,
-    val enabled: Boolean = false
+    @SerializedName("hash") val hash: String,
+    @SerializedName("mode") val mode: String = "public",
+    @SerializedName("cf_worker_url") val cf_worker_url: String?,
+    @SerializedName("cf_api_token") val cf_api_token: String?,
+    @SerializedName("webhook_url") val webhook_url: String?,
+    @SerializedName("enabled") val enabled: Boolean = false
 )
 
 data class MetadataContainer(
-    val files: List<DisboxFile>,
-    val pinHash: String? = null,
-    val shareLinks: List<ShareLink>? = null,
-    val lastMsgId: String? = null,
-    val isDirty: Boolean? = null,
-    val updatedAt: Long? = null,
-    val snapshotHistory: List<String>? = null
+    @SerializedName("files") val files: List<DisboxFile>,
+    @SerializedName("pinHash") val pinHash: String? = null,
+    @SerializedName("shareLinks") val shareLinks: List<ShareLink>? = null,
+    @SerializedName("lastMsgId") val lastMsgId: String? = null,
+    @SerializedName("isDirty") val isDirty: Boolean? = null,
+    @SerializedName("updatedAt") val updatedAt: Long? = null,
+    @SerializedName("snapshotHistory") val snapshotHistory: List<String>? = null
 )
 
 class DisboxApi(private val context: Context, var webhookUrl: String) {
@@ -67,14 +70,23 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
             "https://disbox-worker-3.naufal-backup.workers.dev" to "disbox-shared-link-0001"
         )
         const val DEFAULT_PUBLIC_API_KEY = "disbox-shared-link-0001"
+
+        fun normalizeUrl(url: String): String = CryptoUtils.normalizeUrl(url)
     }
 
-    private val client = OkHttpClient()
+    private val client = OkHttpClient.Builder()
+        .addInterceptor { chain ->
+            val request = chain.request().newBuilder()
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
+                .build()
+            chain.proceed(request)
+        }
+        .build()
     private val gson = Gson()
     var hashedWebhook: String? = null
     private var encryptionKey: ByteArray? = null
     
-    private val baseUrl: String get() = webhookUrl.split("?")[0]
+    private val baseUrl: String get() = CryptoUtils.normalizeUrl(webhookUrl)
 
     var manualMessageId: String? = null
     var lastSyncedId: String? = null
@@ -103,7 +115,8 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
     }
 
     private fun hashWebhook(url: String): String {
-        val bytes = MessageDigest.getInstance("SHA-256").digest(baseUrl.toByteArray())
+        val normalized = CryptoUtils.normalizeUrl(url)
+        val bytes = MessageDigest.getInstance("SHA-256").digest(normalized.toByteArray(Charsets.UTF_8))
         return bytes.joinToString("") { "%02x".format(it) }
     }
 
@@ -142,12 +155,14 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
         var localMsgId: String? = null
         var snapshotHistory = emptyList<String>()
         if (meta != null) {
-            if (meta.isDirty == 1) return@withContext "pending"
+            if (meta.isDirty == 1) {
+                android.util.Log.d("DisboxApi", "Sync pending: local is dirty")
+                return@withContext "pending"
+            }
             localMsgId = meta.lastMsgId
-            snapshotHistory = gson.fromJson(
-                meta.snapshotHistory,
-                object : TypeToken<List<String>>() {}.type
-            )
+            snapshotHistory = try {
+                gson.fromJson(meta.snapshotHistory, object : TypeToken<List<String>>() {}.type)
+            } catch (e: Exception) { emptyList() }
         }
 
         var webhookMsgId: String? = null
@@ -157,21 +172,24 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
             if (response.isSuccessful) {
                 val body = response.body?.string()
                 if (body != null) {
-                    val map: Map<String, Any> = gson.fromJson(
-                        body,
-                        object : TypeToken<Map<String, Any>>() {}.type
-                    )
+                    val map: Map<String, Any> = gson.fromJson(body, object : TypeToken<Map<String, Any>>() {}.type)
                     val name = map["name"] as? String
                     val match = Regex("(?:dbx|disbox|db)[:\\s]+(\\d+)").find(name ?: "")
                     webhookMsgId = match?.groupValues?.get(1)
+                    android.util.Log.d("DisboxApi", "Discovery: Webhook name='$name', found ID=$webhookMsgId")
                 }
+            } else {
+                android.util.Log.w("DisboxApi", "Discovery: Failed to fetch webhook info, code=${response.code}")
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            android.util.Log.e("DisboxApi", "Discovery: Error fetching webhook: ${e.message}")
         }
 
-        val best = listOfNotNull(localMsgId, webhookMsgId)
+        val best = listOfNotNull(localMsgId, webhookMsgId, manualMessageId)
             .maxByOrNull { it.toLongOrNull() ?: 0L }
+        
+        android.util.Log.d("DisboxApi", "Discovery: local=$localMsgId, webhook=$webhookMsgId, manual=$manualMessageId -> best=$best")
+        
         if (best == null) return@withContext null
 
         mapOf("best" to best, "history" to snapshotHistory)
@@ -180,7 +198,11 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
     private suspend fun downloadMetadataFromMsg(msgId: String): MetadataContainer = withContext(Dispatchers.IO) {
         val request = Request.Builder().url("$baseUrl/messages/$msgId").build()
         val response = client.newCall(request).execute()
-        if (!response.isSuccessful) throw Exception("Message $msgId not accessible: ${response.code}")
+        if (!response.isSuccessful) {
+            val code = response.code
+            response.close()
+            throw Exception("Message $msgId not accessible: $code")
+        }
 
         val body = response.body?.string() ?: throw Exception("Empty body")
         val map: Map<String, Any> = gson.fromJson(
@@ -196,38 +218,50 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
             ?: throw Exception("No attachment")
 
         val attRes = client.newCall(Request.Builder().url(url).build()).execute()
-        if (!attRes.isSuccessful) throw Exception("Failed to download metadata file")
+        if (!attRes.isSuccessful) {
+            val code = attRes.code
+            attRes.close()
+            throw Exception("Failed to download metadata file: $code")
+        }
 
         val encryptedBytes = attRes.body?.bytes() ?: throw Exception("Empty metadata file")
         val decryptedBytes = encryptionKey?.let { CryptoUtils.decrypt(encryptedBytes, it) } ?: encryptedBytes
         val attBody = String(decryptedBytes, Charsets.UTF_8)
 
         try {
-            // Manual parsing to avoid Proguard/Kapt issues
-            val jsonObject = gson.fromJson(attBody, com.google.gson.JsonObject::class.java)
+            val jsonElement = gson.fromJson(attBody, com.google.gson.JsonElement::class.java)
+            if (jsonElement.isJsonObject) {
+                val jsonObject = jsonElement.asJsonObject
+                val files: List<DisboxFile> = if (jsonObject.has("files")) {
+                    gson.fromJson(jsonObject.get("files"), object : TypeToken<List<DisboxFile>>() {}.type) ?: emptyList()
+                } else {
+                    gson.fromJson(attBody, object : TypeToken<List<DisboxFile>>() {}.type) ?: emptyList()
+                }
 
-            val files: List<DisboxFile> = if (jsonObject.has("files")) {
-                gson.fromJson(jsonObject.get("files"), object : TypeToken<List<DisboxFile>>() {}.type) ?: emptyList()
+                val shareLinks: List<ShareLink> = if (jsonObject.has("shareLinks")) {
+                    gson.fromJson(jsonObject.get("shareLinks"), object : TypeToken<List<ShareLink>>() {}.type) ?: emptyList()
+                } else {
+                    emptyList()
+                }
+
+                val pinHash = if (jsonObject.has("pinHash") && !jsonObject.get("pinHash").isJsonNull) {
+                    jsonObject.get("pinHash").asString
+                } else null
+                
+                MetadataContainer(
+                    files = files,
+                    shareLinks = shareLinks,
+                    pinHash = pinHash
+                )
+            } else if (jsonElement.isJsonArray) {
+                val files = gson.fromJson<List<DisboxFile>>(jsonElement, object : TypeToken<List<DisboxFile>>() {}.type)
+                MetadataContainer(files = files)
             } else {
-                // Legacy support for metadata being just a list of files
-                gson.fromJson(attBody, object : TypeToken<List<DisboxFile>>() {}.type) ?: emptyList()
+                throw Exception("Invalid metadata format")
             }
-
-            val shareLinks: List<ShareLink> = if (jsonObject.has("shareLinks")) {
-                gson.fromJson(jsonObject.get("shareLinks"), object : TypeToken<List<ShareLink>>() {}.type) ?: emptyList()
-            } else {
-                emptyList()
-            }
-
-            val pinHash = if (jsonObject.has("pinHash")) jsonObject.get("pinHash").asString else null
-            
-            MetadataContainer(
-                files = files,
-                shareLinks = shareLinks,
-                pinHash = pinHash
-            )
         } catch (e: Exception) {
-            // Fallback for very old metadata that might not even be a JSON object
+            android.util.Log.e("DisboxApi", "Error parsing metadata: ${e.message}")
+            // Final fallback
             val files = gson.fromJson<List<DisboxFile>>(attBody, object : TypeToken<List<DisboxFile>>() {}.type)
             MetadataContainer(files = files)
         }
@@ -235,14 +269,21 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
 
     suspend fun syncMetadata(forceId: String? = null): Boolean = withContext(Dispatchers.IO) {
         try {
+            android.util.Log.d("DisboxApi", "Sync started. forceId=$forceId")
             val discovery = if (forceId != null) {
                 mapOf("best" to forceId, "history" to emptyList<String>())
             } else {
                 getMsgIdFromDiscovery()
             }
 
-            if (discovery == null) return@withContext false
-            if (discovery == "pending") return@withContext true
+            if (discovery == null) {
+                android.util.Log.d("DisboxApi", "Sync skipped: No discovery results")
+                return@withContext false
+            }
+            if (discovery == "pending") {
+                android.util.Log.d("DisboxApi", "Sync skipped: Another task pending")
+                return@withContext true
+            }
 
             @Suppress("UNCHECKED_CAST")
             val discMap = discovery as Map<String, Any>
@@ -254,7 +295,10 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
             val meta = metaDao.getMetadata(currentHash)
             val localMsgId = meta?.lastMsgId
 
+            android.util.Log.d("DisboxApi", "Sync: discovery_msgId=$msgId, local_msgId=$localMsgId, local_files=${localFiles.size}")
+
             if (forceId == null && localFiles.isNotEmpty() && (msgId == lastSyncedId || msgId == localMsgId)) {
+                android.util.Log.d("DisboxApi", "Sync skipped: Already up to date")
                 if (lastSyncedId != msgId) {
                     lastSyncedId = msgId
                     onStatusChange?.invoke("synced")
@@ -265,29 +309,37 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
             var resolvedMsgId = msgId
             var container: MetadataContainer? = null
 
+            android.util.Log.d("DisboxApi", "Sync: Downloading metadata from $msgId...")
             try {
                 container = downloadMetadataFromMsg(msgId)
             } catch (e: Exception) {
+                android.util.Log.w("DisboxApi", "Sync: Failed to download $msgId: ${e.message}")
                 val fallbacks = history.reversed().filter { it != msgId }
                 for (fid in fallbacks) {
                     try {
+                        android.util.Log.d("DisboxApi", "Sync: Trying fallback $fid...")
                         container = downloadMetadataFromMsg(fid)
                         resolvedMsgId = fid
                         break
                     } catch (err: Exception) {
-                        err.printStackTrace()
+                        android.util.Log.w("DisboxApi", "Sync: Fallback $fid failed: ${err.message}")
                     }
                 }
             }
 
             if (container != null) {
+                android.util.Log.d("DisboxApi", "Sync: Success! Files=${container.files.size}")
                 saveMetadataToLocal(container.files, resolvedMsgId, shareLinks = container.shareLinks ?: emptyList())
                 container.pinHash?.let { setPin(it, isAlreadyHashed = true) }
                 lastSyncedId = resolvedMsgId
                 onStatusChange?.invoke("synced")
                 true
-            } else false
+            } else {
+                android.util.Log.e("DisboxApi", "Sync failed: Could not download metadata from any source")
+                false
+            }
         } catch (e: Exception) {
+            android.util.Log.e("DisboxApi", "Sync exception: ${e.message}")
             e.printStackTrace()
             onStatusChange?.invoke("error")
             false
@@ -358,17 +410,27 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
 
     suspend fun getFileSystem(filterCloudSave: Boolean = true): List<DisboxFile> = withContext(Dispatchers.IO) {
         val currentHash = hashedWebhook ?: return@withContext emptyList()
-        fileDao.getAllFilesByHash(currentHash).mapNotNull {
-            if (filterCloudSave && it.path.startsWith("cloudsave/")) return@mapNotNull null
-            DisboxFile(
-                it.id,
-                it.path,
-                gson.fromJson(it.messageIds, object : TypeToken<List<String>>() {}.type),
-                it.size,
-                it.createdAt,
-                it.isLocked == 1,
-                it.isStarred == 1
-            )
+        try {
+            fileDao.getAllFilesByHash(currentHash).mapNotNull {
+                if (filterCloudSave && it.path.startsWith("cloudsave/")) return@mapNotNull null
+                try {
+                    DisboxFile(
+                        it.id,
+                        it.path,
+                        gson.fromJson(it.messageIds, object : TypeToken<List<String>>() {}.type),
+                        it.size,
+                        it.createdAt,
+                        it.isLocked == 1,
+                        it.isStarred == 1
+                    )
+                } catch (e: Exception) {
+                    android.util.Log.e("DisboxApi", "Error parsing file ${it.path}: ${e.message}")
+                    null
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("DisboxApi", "Error getting file system: ${e.message}")
+            emptyList()
         }
     }
 
@@ -418,10 +480,24 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
 
                     val patchBody = gson.toJson(mapOf("name" to "dbx: $newMsgId"))
                         .toRequestBody("application/json".toMediaTypeOrNull())
-                    try { client.newCall(Request.Builder().url(baseUrl).patch(patchBody).build()).execute() } catch (e: Exception) {}
+                    try { 
+                        val patchRes = client.newCall(Request.Builder().url(baseUrl).patch(patchBody).build()).execute() 
+                        if (!patchRes.isSuccessful) {
+                            android.util.Log.w("DisboxApi", "Failed to update webhook name: ${patchRes.code}")
+                        }
+                        patchRes.close()
+                    } catch (e: Exception) { 
+                        android.util.Log.e("DisboxApi", "Error updating webhook name: ${e.message}")
+                    }
                 }
-            } else onStatusChange?.invoke("error")
+                res.close()
+            } else {
+                android.util.Log.e("DisboxApi", "Upload failed: ${res.code}")
+                onStatusChange?.invoke("error")
+                res.close()
+            }
         } catch (e: Exception) {
+            android.util.Log.e("DisboxApi", "Upload error: ${e.message}")
             e.printStackTrace()
             onStatusChange?.invoke("error")
         }

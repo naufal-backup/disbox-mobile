@@ -216,7 +216,7 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             isLoading = true
             try {
-                newApi.init()
+                newApi.init(manualMessageId)
                 allFiles = newApi.getFileSystem()
                 isConnected = true
                 
