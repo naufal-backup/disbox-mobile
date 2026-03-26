@@ -76,6 +76,7 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
     
     private val baseUrl: String get() = webhookUrl.split("?")[0]
 
+    var manualMessageId: String? = null
     var lastSyncedId: String? = null
     var chunkSize = 8 * 1024 * 1024
     var onStatusChange: ((String) -> Unit)? = null
