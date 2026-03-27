@@ -101,15 +101,23 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
     private val shareLinkDao by lazy { db.shareLinkDao() }
 
     private val metadataDir: File by lazy {
-        val dir = File(Environment.getExternalStorageDirectory(), "disbox")
+        val dir = context.getExternalFilesDir("metadata") ?: File(context.filesDir, "metadata")
         if (!dir.exists()) dir.mkdirs()
         dir
+    }
+
+    private val legacyMetadataDir: File by lazy {
+        File(Environment.getExternalStorageDirectory(), "disbox")
     }
 
     suspend fun init(forceSyncId: String? = null): String = withContext(Dispatchers.IO) {
         hashedWebhook = hashWebhook(webhookUrl)
         encryptionKey = CryptoUtils.deriveKey(webhookUrl)
-        migrateJsonToSqlite()
+        try {
+            migrateJsonToSqlite()
+        } catch (e: Exception) {
+            android.util.Log.e("DisboxApi", "Migration error: ${e.message}")
+        }
         syncMetadata(forceSyncId)
         hashedWebhook!!
     }
@@ -122,9 +130,17 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
 
     private suspend fun migrateJsonToSqlite() = withContext(Dispatchers.IO) {
         val localFile = File(metadataDir, "$hashedWebhook.json")
-        if (localFile.exists()) {
+        val legacyFile = File(legacyMetadataDir, "$hashedWebhook.json")
+        
+        val fileToMigrate = when {
+            localFile.exists() -> localFile
+            legacyFile.exists() -> legacyFile
+            else -> null
+        }
+
+        if (fileToMigrate != null) {
             try {
-                val content = localFile.readText()
+                val content = fileToMigrate.readText()
                 val container = try {
                     gson.fromJson(content, MetadataContainer::class.java)
                 } catch (e: Exception) {
@@ -141,7 +157,7 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
                 
                 container.pinHash?.let { setPin(it, isAlreadyHashed = true) }
 
-                localFile.renameTo(File(metadataDir, "$hashedWebhook.json.bak"))
+                fileToMigrate.renameTo(File(fileToMigrate.parent, "${fileToMigrate.name}.bak"))
             } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -186,7 +202,8 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
         }
 
         val best = listOfNotNull(localMsgId, webhookMsgId, manualMessageId)
-            .maxByOrNull { it.toLongOrNull() ?: 0L }
+            .mapNotNull { it.toLongOrNull() }
+            .maxOrNull()?.toString()
         
         android.util.Log.d("DisboxApi", "Discovery: local=$localMsgId, webhook=$webhookMsgId, manual=$manualMessageId -> best=$best")
         
@@ -278,7 +295,8 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
 
             if (discovery == null) {
                 android.util.Log.d("DisboxApi", "Sync skipped: No discovery results")
-                return@withContext false
+                onStatusChange?.invoke("synced") // Consider it synced if nothing to sync
+                return@withContext true
             }
             if (discovery == "pending") {
                 android.util.Log.d("DisboxApi", "Sync skipped: Another task pending")
@@ -301,8 +319,8 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
                 android.util.Log.d("DisboxApi", "Sync skipped: Already up to date")
                 if (lastSyncedId != msgId) {
                     lastSyncedId = msgId
-                    onStatusChange?.invoke("synced")
                 }
+                onStatusChange?.invoke("synced")
                 return@withContext true
             }
 
@@ -336,6 +354,7 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
                 true
             } else {
                 android.util.Log.e("DisboxApi", "Sync failed: Could not download metadata from any source")
+                onStatusChange?.invoke("error")
                 false
             }
         } catch (e: Exception) {
