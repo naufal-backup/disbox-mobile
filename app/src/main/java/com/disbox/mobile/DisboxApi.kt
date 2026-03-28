@@ -202,7 +202,7 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
         var snapshotHistory = emptyList<String>()
         if (meta != null) {
             if (meta.isDirty == 1 && !force) {
-                android.util.Log.d("DisboxApi", "Sync pending: local is dirty (use force to bypass)")
+                android.util.Log.d("DisboxApi", "Sync pending: local is dirty")
                 return@withContext "pending"
             }
             localMsgId = meta.lastMsgId
@@ -212,6 +212,7 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
         }
 
         var webhookMsgId: String? = null
+        // 1. Try discovery via Webhook Name
         try {
             val request = Request.Builder().url(baseUrl).build()
             val response = client.newCall(request).execute()
@@ -222,23 +223,48 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
                     val name = map["name"] as? String
                     val match = Regex("(?:dbx|disbox|db)[:\\s]+(\\d+)", RegexOption.IGNORE_CASE).find(name ?: "")
                     webhookMsgId = match?.groupValues?.get(1)
-                    android.util.Log.d("DisboxApi", "Discovery: Webhook name='$name', found ID=$webhookMsgId")
+                    android.util.Log.d("DisboxApi", "Discovery (Name): Found ID $webhookMsgId")
                 }
-            } else {
-                android.util.Log.w("DisboxApi", "Discovery: Failed to fetch webhook info, code=${response.code}")
             }
         } catch (e: Exception) {
-            android.util.Log.e("DisboxApi", "Discovery: Error fetching webhook: ${e.message}")
+            android.util.Log.e("DisboxApi", "Discovery (Name) Error: ${e.message}")
+        }
+
+        // 2. Fallback: Scan recent messages if name discovery failed
+        if (webhookMsgId == null) {
+            android.util.Log.d("DisboxApi", "Discovery: Webhook name failed, scanning messages...")
+            try {
+                val scanUrl = if (baseUrl.endsWith("/")) "${baseUrl}messages?limit=50" else "$baseUrl/messages?limit=50"
+                val request = Request.Builder().url(scanUrl).build()
+                val response = client.newCall(request).execute()
+                if (response.isSuccessful) {
+                    val body = response.body?.string()
+                    if (body != null) {
+                        val messages: List<Map<String, Any>> = gson.fromJson(body, object : TypeToken<List<Map<String, Any>>>() {}.type)
+                        // Search for the latest message containing disbox_metadata.json
+                        for (msg in messages) {
+                            val attachments = msg["attachments"] as? List<Map<String, Any>>
+                            val hasMetadata = attachments?.any { 
+                                (it["filename"] as? String)?.contains("metadata.json") == true 
+                            } == true
+                            if (hasMetadata) {
+                                webhookMsgId = msg["id"] as? String
+                                android.util.Log.d("DisboxApi", "Discovery (Scan): Found metadata in message $webhookMsgId")
+                                break
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("DisboxApi", "Discovery (Scan) Error: ${e.message}")
+            }
         }
 
         val best = listOfNotNull(localMsgId, webhookMsgId, manualMessageId)
             .mapNotNull { it.toLongOrNull() }
             .maxOrNull()?.toString()
         
-        android.util.Log.d("DisboxApi", "Discovery: local=$localMsgId, webhook=$webhookMsgId, manual=$manualMessageId -> best=$best")
-        
         if (best == null) return@withContext null
-
         mapOf("best" to best, "history" to snapshotHistory)
     }
 
