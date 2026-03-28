@@ -5,7 +5,7 @@ import android.net.Uri
 import android.os.Environment
 import android.provider.OpenableColumns
 import androidx.room.withTransaction
-import com.google.gson.Gson
+import com.google.gson.*
 import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.Dispatchers
 import java.io.File
@@ -17,13 +17,39 @@ import kotlinx.coroutines.withContext
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
-
+import java.lang.reflect.Type
 import com.google.gson.annotations.SerializedName
+
+data class MessageId(
+    @SerializedName("msgId") val msgId: String,
+    @SerializedName("index") val index: Int = 0
+)
+
+class MessageIdAdapter : JsonDeserializer<MessageId>, JsonSerializer<MessageId> {
+    override fun deserialize(json: JsonElement, typeOfT: Type, context: JsonDeserializationContext): MessageId {
+        return if (json.isJsonPrimitive) {
+            MessageId(json.asString, 0)
+        } else {
+            val obj = json.asJsonObject
+            MessageId(
+                obj.get("msgId")?.asString ?: obj.get("id")?.asString ?: "",
+                obj.get("index")?.asInt ?: 0
+            )
+        }
+    }
+
+    override fun serialize(src: MessageId, typeOfSrc: Type, context: JsonSerializationContext): JsonElement {
+        val obj = JsonObject()
+        obj.addProperty("msgId", src.msgId)
+        obj.addProperty("index", src.index)
+        return obj
+    }
+}
 
 data class DisboxFile(
     @SerializedName("id") val id: String = UUID.randomUUID().toString(),
     @SerializedName("path") var path: String,
-    @SerializedName("messageIds") val messageIds: List<String>,
+    @SerializedName("messageIds") val messageIds: List<MessageId>,
     @SerializedName("size") val size: Long,
     @SerializedName("createdAt") val createdAt: Long = System.currentTimeMillis(),
     @SerializedName("isLocked") val isLocked: Boolean = false,
@@ -82,7 +108,11 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
             chain.proceed(request)
         }
         .build()
-    private val gson = Gson()
+
+    private val gson = GsonBuilder()
+        .registerTypeAdapter(MessageId::class.java, MessageIdAdapter())
+        .create()
+
     var hashedWebhook: String? = null
     private var encryptionKey: ByteArray? = null
     
@@ -190,7 +220,7 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
                 if (body != null) {
                     val map: Map<String, Any> = gson.fromJson(body, object : TypeToken<Map<String, Any>>() {}.type)
                     val name = map["name"] as? String
-                    val match = Regex("(?:dbx|disbox|db)[:\\s]+(\\d+)").find(name ?: "")
+                    val match = Regex("(?:dbx|disbox|db)[:\\s]+(\\d+)", RegexOption.IGNORE_CASE).find(name ?: "")
                     webhookMsgId = match?.groupValues?.get(1)
                     android.util.Log.d("DisboxApi", "Discovery: Webhook name='$name', found ID=$webhookMsgId")
                 }
@@ -278,8 +308,9 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
             }
         } catch (e: Exception) {
             android.util.Log.e("DisboxApi", "Error parsing metadata: ${e.message}")
-            // Final fallback
-            val files = gson.fromJson<List<DisboxFile>>(attBody, object : TypeToken<List<DisboxFile>>() {}.type)
+            // Fallback for very old metadata or mixed format
+            val listType = object : TypeToken<List<DisboxFile>>() {}.type
+            val files = gson.fromJson<List<DisboxFile>>(attBody, listType)
             MetadataContainer(files = files)
         }
     }
@@ -295,7 +326,7 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
 
             if (discovery == null) {
                 android.util.Log.d("DisboxApi", "Sync skipped: No discovery results")
-                onStatusChange?.invoke("synced") // Consider it synced if nothing to sync
+                onStatusChange?.invoke("synced")
                 return@withContext true
             }
             if (discovery == "pending") {
@@ -436,7 +467,7 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
                     DisboxFile(
                         it.id,
                         it.path,
-                        gson.fromJson(it.messageIds, object : TypeToken<List<String>>() {}.type),
+                        gson.fromJson(it.messageIds, object : TypeToken<List<MessageId>>() {}.type),
                         it.size,
                         it.createdAt,
                         it.isLocked == 1,
@@ -588,8 +619,8 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
                 fileDao.getFileByPath(filePath.trim('/'), currentHash)
             } ?: return@withContext mapOf("ok" to false, "reason" to "file_not_found")
 
-            val messageIdsRaw = gson.fromJson<List<String>>(file.messageIds, object : TypeToken<List<String>>() {}.type)
-            val messageIds = messageIdsRaw.map { mapOf("msgId" to it, "attachmentUrl" to null) }
+            val messageIdsRaw = gson.fromJson<List<MessageId>>(file.messageIds, object : TypeToken<List<MessageId>>() {}.type)
+            val messageIds = messageIdsRaw.map { mapOf("msgId" to it.msgId, "attachmentUrl" to null, "index" to it.index) }
 
             // Derive encryption key for the worker to help decrypt
             val encryptionKeyB64 = android.util.Base64.encodeToString(CryptoUtils.deriveKey(webhookUrl), android.util.Base64.NO_WRAP)
@@ -678,7 +709,7 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
         }
     }
 
-    suspend fun createFile(path: String, msgIds: List<String>, size: Long, id: String? = null) {
+    suspend fun createFile(path: String, msgIds: List<MessageId>, size: Long, id: String? = null) {
         val files = getFileSystem(filterCloudSave = false).toMutableList()
         val normalizedPath = path.trim('/')
         val fileId = id ?: UUID.randomUUID().toString()
@@ -888,7 +919,7 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
             }
         }
         val numChunks = Math.ceil(size.toDouble() / chunkSize).toInt().coerceAtLeast(1)
-        val messageIds = mutableListOf<String>()
+        val messageIds = mutableListOf<MessageId>()
         val inputStream = resolver.openInputStream(uri) ?: throw Exception("Failed to open file")
         inputStream.use { stream ->
             val buffer = ByteArray(chunkSize)
@@ -917,7 +948,7 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
                         }
                         if (!response.isSuccessful) throw Exception("Chunk $i upload failed")
                         val rBody = response.body?.string() ?: ""; val map: Map<String, Any> = gson.fromJson(rBody, object : TypeToken<Map<String, Any>>() {}.type)
-                        messageIds.add(map["id"] as String); success = true
+                        messageIds.add(MessageId(map["id"] as String, 0)); success = true
                     } catch (e: Exception) { retries++; if (retries >= 3) throw e; Thread.sleep(2000) }
                 }
                 onProgress((i + 1).toFloat() / numChunks)
@@ -929,7 +960,7 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
         if (idx >= 0) updatedFiles[idx] = entry else updatedFiles.add(entry)
         saveMetadataToLocal(updatedFiles, isDirty = true)
         uploadMetadataToDiscord(updatedFiles)
-        messageIds
+        messageIds.map { it.msgId }
     }
 
     suspend fun downloadFile(file: DisboxFile, destFile: File, onProgress: (Float) -> Unit) {
@@ -951,13 +982,19 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
         out.use { stream ->
             for (i in startIndex until actualEndIndex) {
                 kotlinx.coroutines.yield()
-                val msgUrl = "$baseUrl/messages/${messageIds[i]}"
+                val item = messageIds[i]
+                val msgUrl = "$baseUrl/messages/${item.msgId}"
                 val msgRes = client.newCall(Request.Builder().url(msgUrl).build()).execute()
-                if (!msgRes.isSuccessful) throw Exception("Failed to fetch msg ${messageIds[i]}")
+                if (!msgRes.isSuccessful) throw Exception("Failed to fetch msg ${item.msgId}")
                 val map: Map<String, Any> = gson.fromJson(msgRes.body?.string() ?: "", object : TypeToken<Map<String, Any>>() {}.type)
                 @Suppress("UNCHECKED_CAST")
                 val attachments = map["attachments"] as? List<Map<String, Any>>
-                val url = attachments?.firstOrNull()?.get("url") as? String ?: throw Exception("No attachment URL")
+                val url = if (attachments != null && item.index < attachments.size) {
+                    attachments[item.index]["url"] as? String
+                } else {
+                    attachments?.firstOrNull()?.get("url") as? String
+                } ?: throw Exception("No attachment URL")
+                
                 val chunkRes = client.newCall(Request.Builder().url(url).build()).execute()
                 if (!chunkRes.isSuccessful) throw Exception("Failed to download chunk")
                 var chunkData = chunkRes.body?.bytes() ?: throw Exception("Empty chunk body")
@@ -968,14 +1005,19 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
         }
     }
 
-    suspend fun downloadSingleChunk(msgId: String): ByteArray = withContext(Dispatchers.IO) {
-        val msgUrl = "$baseUrl/messages/$msgId"
+    suspend fun downloadSingleChunk(item: MessageId): ByteArray = withContext(Dispatchers.IO) {
+        val msgUrl = "$baseUrl/messages/${item.msgId}"
         val msgRes = client.newCall(Request.Builder().url(msgUrl).build()).execute()
-        if (!msgRes.isSuccessful) throw Exception("Failed to fetch msg $msgId")
+        if (!msgRes.isSuccessful) throw Exception("Failed to fetch msg ${item.msgId}")
         val map: Map<String, Any> = gson.fromJson(msgRes.body?.string() ?: "", object : TypeToken<Map<String, Any>>() {}.type)
         @Suppress("UNCHECKED_CAST")
         val attachments = map["attachments"] as? List<Map<String, Any>>
-        val url = attachments?.firstOrNull()?.get("url") as? String ?: throw Exception("No attachment URL")
+        val url = if (attachments != null && item.index < attachments.size) {
+            attachments[item.index]["url"] as? String
+        } else {
+            attachments?.firstOrNull()?.get("url") as? String
+        } ?: throw Exception("No attachment URL")
+        
         val chunkRes = client.newCall(Request.Builder().url(url).build()).execute()
         if (!chunkRes.isSuccessful) throw Exception("Failed to download chunk")
         var chunkData = chunkRes.body?.bytes() ?: throw Exception("Empty chunk body")
