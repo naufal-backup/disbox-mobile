@@ -12,10 +12,7 @@ object CryptoUtils {
     private const val TAG_LENGTH = 16 // bytes (128 bits)
 
     fun normalizeUrl(url: String): String {
-        var normalized = url.split("?")[0].trim().trimEnd('/')
-        if (!normalized.startsWith("http")) normalized = "https://$normalized"
-        normalized = normalized.replace("discordapp.com", "discord.com")
-        return normalized
+        return url.split("?")[0].trim().trimEnd('/')
     }
 
     fun deriveKey(webhookUrl: String): ByteArray {

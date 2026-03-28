@@ -288,7 +288,7 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
     fun refresh(silent: Boolean = false) {
         viewModelScope.launch {
             if (!silent) isLoading = true
-            api?.syncMetadata()
+            api?.syncMetadata(forceSync = true)
             allFiles = api?.getFileSystem(filterCloudSave = activePage != "cloud-save") ?: emptyList()
             if (activePage == "shared") loadShareData()
             if (!silent) isLoading = false

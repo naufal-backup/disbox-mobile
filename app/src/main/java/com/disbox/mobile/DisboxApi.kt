@@ -148,7 +148,7 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
         } catch (e: Exception) {
             android.util.Log.e("DisboxApi", "Migration error: ${e.message}")
         }
-        syncMetadata(forceSyncId)
+        syncMetadata(forceId = forceSyncId, forceSync = true)
         hashedWebhook!!
     }
 
@@ -194,15 +194,15 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
         }
     }
 
-    private suspend fun getMsgIdFromDiscovery(): Any? = withContext(Dispatchers.IO) {
+    private suspend fun getMsgIdFromDiscovery(force: Boolean = false): Any? = withContext(Dispatchers.IO) {
         val currentHash = hashedWebhook ?: return@withContext null
         val meta = metaDao.getMetadata(currentHash)
 
         var localMsgId: String? = null
         var snapshotHistory = emptyList<String>()
         if (meta != null) {
-            if (meta.isDirty == 1) {
-                android.util.Log.d("DisboxApi", "Sync pending: local is dirty")
+            if (meta.isDirty == 1 && !force) {
+                android.util.Log.d("DisboxApi", "Sync pending: local is dirty (use force to bypass)")
                 return@withContext "pending"
             }
             localMsgId = meta.lastMsgId
@@ -315,13 +315,13 @@ class DisboxApi(private val context: Context, var webhookUrl: String) {
         }
     }
 
-    suspend fun syncMetadata(forceId: String? = null): Boolean = withContext(Dispatchers.IO) {
+    suspend fun syncMetadata(forceId: String? = null, forceSync: Boolean = false): Boolean = withContext(Dispatchers.IO) {
         try {
-            android.util.Log.d("DisboxApi", "Sync started. forceId=$forceId")
+            android.util.Log.d("DisboxApi", "Sync started. forceId=$forceId, forceSync=$forceSync")
             val discovery = if (forceId != null) {
                 mapOf("best" to forceId, "history" to emptyList<String>())
             } else {
-                getMsgIdFromDiscovery()
+                getMsgIdFromDiscovery(forceSync)
             }
 
             if (discovery == null) {
