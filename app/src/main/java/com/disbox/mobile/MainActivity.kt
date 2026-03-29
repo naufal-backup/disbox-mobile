@@ -21,7 +21,7 @@ import androidx.navigation.compose.rememberNavController
 import com.disbox.mobile.navigation.Screen
 import com.disbox.mobile.ui.components.*
 import com.disbox.mobile.ui.screens.*
-import com.disbox.mobile.ui.theme.*
+import com.disbox.mobile.ui.theme.DisboxTheme
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
