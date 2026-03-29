@@ -335,25 +335,24 @@ class DisboxRepository(
             val file = if (fileId != null) fileDao.getFileById(fileId, hash) else fileDao.getFileByPath(filePath.trim('/'), hash)
             val msgIdsRaw = gson.fromJson<List<MessageId>>(file?.messageIds ?: "[]", object : TypeToken<List<MessageId>>() {}.type)
             val msgIds = msgIdsRaw.map { 
-                val m = mutableMapOf<String, Any>()
-                m["msgId"] = it.msgId
-                m["index"] = it.index
-                m as Map<String, Any>
+                MessageIdRequest(it.msgId, it.index)
             }
             val encKey = android.util.Base64.encodeToString(encryptionKey, android.util.Base64.NO_WRAP)
 
-            val body = mutableMapOf<String, Any>()
-            body["token"] = token
-            body["fileId"] = fileId ?: ""
-            body["filePath"] = filePath
-            body["permission"] = permission
-            body["expiresAt"] = expiresAt ?: 0L
-            body["webhookHash"] = hash
-            body["messageIds"] = msgIds
-            body["encryptionKeyB64"] = encKey
-            body["webhookUrl"] = baseUrl
-            
-            apiService.createShareLink(workerUrl, "disbox-shared-link-0001", body as Map<String, Any>)?.let {
+            val request = ShareLinkRequest(
+                token = token,
+                fileId = fileId,
+                filePath = filePath,
+                permission = permission,
+                expiresAt = expiresAt,
+                webhookHash = hash,
+                messageIds = msgIds,
+                encryptionKeyB64 = encKey,
+                webhookUrl = baseUrl
+            )
+
+            apiService.createShareLink(workerUrl, "disbox-shared-link-0001", request)?.let {
+
                 val id = UUID.randomUUID().toString()
                 shareLinkDao.insertOrReplace(ShareLinkEntity(id, hash, filePath, fileId, token, permission, expiresAt, System.currentTimeMillis()))
                 uploadMetadataToDiscord()

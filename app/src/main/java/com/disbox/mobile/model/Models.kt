@@ -47,3 +47,20 @@ data class MetadataContainer(
     @SerializedName("updatedAt") val updatedAt: Long? = null,
     @SerializedName("snapshotHistory") val snapshotHistory: List<String>? = null
 )
+
+data class MessageIdRequest(
+    @SerializedName("msgId") val msgId: String,
+    @SerializedName("index") val index: Int
+)
+
+data class ShareLinkRequest(
+    @SerializedName("token") val token: String,
+    @SerializedName("fileId") val fileId: String?,
+    @SerializedName("filePath") val filePath: String,
+    @SerializedName("permission") val permission: String,
+    @SerializedName("expiresAt") val expiresAt: Long?,
+    @SerializedName("webhookHash") val webhookHash: String,
+    @SerializedName("messageIds") val messageIds: List<MessageIdRequest>,
+    @SerializedName("encryptionKeyB64") val encryptionKeyB64: String,
+    @SerializedName("webhookUrl") val webhookUrl: String
+)
