@@ -21,7 +21,7 @@ import androidx.navigation.compose.rememberNavController
 import com.disbox.mobile.navigation.Screen
 import com.disbox.mobile.ui.components.*
 import com.disbox.mobile.ui.screens.*
-import com.disbox.mobile.ui.theme.DisboxTheme
+import com.disbox.mobile.ui.theme.DisboxMobileTheme
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -31,12 +31,7 @@ class MainActivity : ComponentActivity() {
             val accentColorHex = viewModel.accentColor
             val theme = viewModel.theme
             
-            val accentColor = remember(accentColorHex) { 
-                try { Color(android.graphics.Color.parseColor(accentColorHex)) } 
-                catch (e: Exception) { Color(0xFF5865F2) } 
-            }
-
-            DisboxTheme(darkTheme = (theme == "dark"), accentColor = accentColor) {
+            DisboxMobileTheme(darkTheme = (theme == "dark"), accentColor = accentColorHex) {
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     if (!viewModel.isConnected) {
                         LoginScreen(viewModel)
