@@ -1,15 +1,17 @@
-package com.disbox.mobile
+package com.disbox.mobile.data
 
 import android.net.Uri
 import androidx.media3.common.C
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.TransferListener
+import com.disbox.mobile.data.repository.DisboxRepository
+import com.disbox.mobile.model.DisboxFile
 import kotlinx.coroutines.runBlocking
 import kotlin.math.min
 
 class DiscordDataSource(
-    private val api: DisboxApi,
+    private val repository: DisboxRepository,
     private val file: DisboxFile
 ) : DataSource {
 
@@ -26,15 +28,8 @@ class DiscordDataSource(
         if (actualChunkSize > 0) return actualChunkSize
         if (file.messageIds.isEmpty()) return 10 * 1024 * 1024L
         
-        // Fetch chunk 0 to determine the exact chunk size used during upload
         val chunk0 = fetchChunk(0)
-        
-        // If there's only one chunk, the 'chunk size' is just the file size or chunk size, doesn't matter
-        actualChunkSize = if (file.messageIds.size == 1) {
-            file.size
-        } else {
-            chunk0.size.toLong()
-        }
+        actualChunkSize = if (file.messageIds.size == 1) file.size else chunk0.size.toLong()
         return actualChunkSize
     }
 
@@ -43,13 +38,7 @@ class DiscordDataSource(
     override fun open(dataSpec: DataSpec): Long {
         this.dataSpec = dataSpec
         currentOffset = dataSpec.position
-        
-        bytesRemaining = if (dataSpec.length == C.LENGTH_UNSET.toLong()) {
-            file.size - currentOffset
-        } else {
-            dataSpec.length
-        }
-        
+        bytesRemaining = if (dataSpec.length == C.LENGTH_UNSET.toLong()) file.size - currentOffset else dataSpec.length
         isOpen = true
         return bytesRemaining
     }
@@ -61,27 +50,19 @@ class DiscordDataSource(
         val bytesRead = try {
             val cSize = getChunkSize()
             val chunkIndex = (currentOffset / cSize).toInt()
-            
-            if (chunkIndex >= file.messageIds.size) {
-                return C.RESULT_END_OF_INPUT
-            }
+            if (chunkIndex >= file.messageIds.size) return C.RESULT_END_OF_INPUT
 
             val chunkBytes = fetchChunk(chunkIndex)
             val offsetInChunk = (currentOffset % cSize).toInt()
-            
             val availableInChunk = chunkBytes.size - offsetInChunk
-            if (availableInChunk <= 0) {
-                return C.RESULT_END_OF_INPUT 
-            }
+            if (availableInChunk <= 0) return C.RESULT_END_OF_INPUT 
 
-            val toCopy = min(length, availableInChunk)
-            val toCopyLong = min(toCopy.toLong(), bytesRemaining).toInt()
-            
+            val toCopyLong = min(min(length, availableInChunk).toLong(), bytesRemaining).toInt()
             System.arraycopy(chunkBytes, offsetInChunk, buffer, offset, toCopyLong)
             toCopyLong
         } catch (e: Exception) {
             e.printStackTrace()
-            return C.RESULT_END_OF_INPUT // Signal end on error so player doesn't loop infinitely
+            return C.RESULT_END_OF_INPUT
         }
 
         if (bytesRead > 0) {
@@ -92,16 +73,11 @@ class DiscordDataSource(
     }
 
     override fun getUri(): Uri? = dataSpec?.uri
-
-    override fun close() {
-        isOpen = false
-    }
+    override fun close() { isOpen = false }
 
     private fun fetchChunk(index: Int): ByteArray {
-        if (index == cachedChunkIndex && cachedChunkData != null) {
-            return cachedChunkData!!
-        }
-        val data = runBlocking { api.downloadSingleChunk(file.messageIds[index]) }
+        if (index == cachedChunkIndex && cachedChunkData != null) return cachedChunkData!!
+        val data = runBlocking { repository.downloadFileChunk(file.messageIds[index].msgId, file.messageIds[index].index) } ?: throw Exception("Chunk download failed")
         cachedChunkIndex = index
         cachedChunkData = data
         return data
@@ -109,10 +85,8 @@ class DiscordDataSource(
 }
 
 class DiscordDataSourceFactory(
-    private val api: DisboxApi,
+    private val repository: DisboxRepository,
     private val file: DisboxFile
 ) : DataSource.Factory {
-    override fun createDataSource(): DataSource {
-        return DiscordDataSource(api, file)
-    }
+    override fun createDataSource(): DataSource = DiscordDataSource(repository, file)
 }
