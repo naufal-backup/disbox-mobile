@@ -46,7 +46,7 @@ class DisboxRepository(
         hashedWebhook = hashWebhook(url)
         encryptionKey = CryptoUtils.deriveKey(url)
         migrateJsonToSqlite()
-        syncMetadata(forceId = forceSyncId, forceSync = true)
+        syncMetadata(forceId = forceId, forceSync = true)
         hashedWebhook!!
     }
 
