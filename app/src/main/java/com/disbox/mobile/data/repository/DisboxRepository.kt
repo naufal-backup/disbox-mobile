@@ -334,15 +334,15 @@ class DisboxRepository(
             
             val file = if (fileId != null) fileDao.getFileById(fileId, hash) else fileDao.getFileByPath(filePath.trim('/'), hash)
             val msgIdsRaw = gson.fromJson<List<MessageId>>(file?.messageIds ?: "[]", object : TypeToken<List<MessageId>>() {}.type)
-            val msgIds = msgIdsRaw.map { 
-                mapOf<String, Any>(
-                    "msgId" to it.msgId,
-                    "index" to it.index
-                )
+            val msgIds: List<Map<String, Any>> = msgIdsRaw.map { 
+                val m = HashMap<String, Any>()
+                m["msgId"] = it.msgId
+                m["index"] = it.index
+                m as Map<String, Any>
             }
             val encKey = android.util.Base64.encodeToString(encryptionKey, android.util.Base64.NO_WRAP)
 
-            val body = mutableMapOf<String, Any>()
+            val body = HashMap<String, Any>()
             body["token"] = token
             body["fileId"] = fileId ?: ""
             body["filePath"] = filePath
@@ -352,8 +352,9 @@ class DisboxRepository(
             body["messageIds"] = msgIds
             body["encryptionKeyB64"] = encKey
             body["webhookUrl"] = baseUrl
-            
-            apiService.createShareLink(workerUrl, "disbox-shared-link-0001", body)?.let {
+
+            apiService.createShareLink(workerUrl, "disbox-shared-link-0001", body as Any)?.let {
+
 
                 val id = UUID.randomUUID().toString()
                 shareLinkDao.insertOrReplace(ShareLinkEntity(id, hash, filePath, fileId, token, permission, expiresAt, System.currentTimeMillis()))
