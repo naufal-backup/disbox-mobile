@@ -347,7 +347,7 @@ class DisboxRepository(
                 webhookUrl = baseUrl
             )
             
-            apiService.createShareLink(workerUrl, "disbox-shared-link-0001", request)?.let {
+            apiService.createShareLink(workerUrl, "disbox-shared-link-0001", gson.toJson(request))?.let {
                 val id = UUID.randomUUID().toString()
                 shareLinkDao.insertOrReplace(ShareLinkEntity(id, hash, filePath, fileId, token, permission, expiresAt, System.currentTimeMillis()))
                 uploadMetadataToDiscord()
