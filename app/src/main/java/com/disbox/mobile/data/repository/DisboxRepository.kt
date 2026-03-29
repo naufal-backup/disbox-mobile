@@ -353,7 +353,7 @@ class DisboxRepository(
             body["encryptionKeyB64"] = encKey
             body["webhookUrl"] = baseUrl
 
-            apiService.createShareLink(workerUrl, "disbox-shared-link-0001", body as Any)?.let {
+            apiService.createShareLink(workerUrl, "disbox-shared-link-0001", gson.toJson(body))?.let {
 
 
                 val id = UUID.randomUUID().toString()
