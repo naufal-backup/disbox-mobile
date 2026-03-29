@@ -337,17 +337,16 @@ class DisboxRepository(
             val msgIds = msgIdsRaw.map { mapOf("msgId" to it.msgId, "index" to it.index) }
             val encKey = android.util.Base64.encodeToString(encryptionKey, android.util.Base64.NO_WRAP)
 
-            val body: Map<String, Any> = mapOf(
-                "token" to token, 
-                "fileId" to (fileId ?: ""), 
-                "filePath" to filePath, 
-                "permission" to permission, 
-                "expiresAt" to (expiresAt ?: 0L), 
-                "webhookHash" to hash, 
-                "messageIds" to msgIds, 
-                "encryptionKeyB64" to encKey, 
-                "webhookUrl" to baseUrl
-            )
+            val body = mutableMapOf<String, Any>()
+            body["token"] = token
+            body["fileId"] = fileId ?: ""
+            body["filePath"] = filePath
+            body["permission"] = permission
+            body["expiresAt"] = expiresAt ?: 0L
+            body["webhookHash"] = hash
+            body["messageIds"] = msgIds
+            body["encryptionKeyB64"] = encKey
+            body["webhookUrl"] = baseUrl
             
             apiService.createShareLink(workerUrl, "disbox-shared-link-0001", body)?.let {
                 val id = UUID.randomUUID().toString()
