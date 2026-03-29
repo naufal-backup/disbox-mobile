@@ -8,11 +8,10 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.disbox.mobile.data.repository.DisboxRepository
 import com.disbox.mobile.data.service.DisboxApiService
-import com.disbox.mobile.DisboxDatabase
 import com.disbox.mobile.domain.usecase.*
+import com.disbox.mobile.model.*
 import com.disbox.mobile.utils.I18n
 import com.disbox.mobile.utils.FileUtils
-import com.disbox.mobile.model.*
 import kotlinx.coroutines.launch
 import java.io.File
 import java.util.UUID
@@ -55,7 +54,7 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
     // Selection and Transfers
     var selectionSet = mutableStateListOf<String>()
     var transferProgress = mutableStateMapOf<String, Float>()
-    var moveCopyMode by mutableStateOf<String?>(null) // "move" or "copy"
+    var moveCopyMode by mutableStateOf<String?>(null)
     var moveCopyItems by mutableStateOf<Set<String>>(emptySet())
     
     // Sharing
@@ -69,7 +68,7 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
     var playbackProgress by mutableStateOf(0f)
     var playbackPosition by mutableStateOf(0L)
     var playbackDuration by mutableStateOf(0L)
-    var repeatMode by mutableStateOf(0) // 0: none, 1: one, 2: all
+    var repeatMode by mutableStateOf(0)
 
     // Auth
     var savedWebhooks by mutableStateOf<List<String>>(emptyList())
@@ -114,11 +113,7 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
                 saveWebhook(url)
                 refresh()
                 loadShareLinks()
-            } catch (e: Exception) {
-                e.printStackTrace()
-            } finally {
-                isLoading = false
-            }
+            } catch (e: Exception) { e.printStackTrace() } finally { isLoading = false }
         }
     }
 
@@ -149,58 +144,26 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
             try {
                 syncMetadataUseCase()
                 allFiles = repository.getFileSystem()
-            } catch (e: Exception) {
-                e.printStackTrace()
-            } finally {
-                isLoading = false
-            }
+            } catch (e: Exception) { e.printStackTrace() } finally { isLoading = false }
         }
     }
 
-    fun navigate(path: String) {
-        currentPath = path
-    }
+    fun navigate(path: String) { currentPath = path }
+    fun setPage(page: String) { activePage = page }
+    fun setView(mode: String) { viewMode = mode; prefs.edit().putString("view_mode", mode).apply() }
+    fun setZoom(level: Float) { zoomLevel = level; prefs.edit().putFloat("zoom_level", level).apply() }
+    fun updateSortMode(mode: String) { sortMode = mode; prefs.edit().putString("sort_mode", mode).apply() }
 
-    fun setPage(page: String) {
-        activePage = page
-    }
-
-    fun setView(mode: String) {
-        viewMode = mode
-        prefs.edit().putString("view_mode", mode).apply()
-    }
-
-    fun setZoom(level: Float) {
-        zoomLevel = level
-        prefs.edit().putFloat("zoom_level", level).apply()
-    }
-
-    fun updateSortMode(mode: String) {
-        sortMode = mode
-        prefs.edit().putString("sort_mode", mode).apply()
-    }
-
-    // File Operations
     fun createFolder(name: String) {
-        viewModelScope.launch {
-            fileOpsUseCase.createFolder(name, currentPath)
-            refresh()
-        }
+        viewModelScope.launch { fileOpsUseCase.createFolder(name, currentPath); refresh() }
     }
 
     fun deletePaths(idsOrPaths: List<String>) {
-        viewModelScope.launch {
-            fileOpsUseCase.deletePaths(idsOrPaths)
-            clearSelection()
-            refresh()
-        }
+        viewModelScope.launch { fileOpsUseCase.deletePaths(idsOrPaths); clearSelection(); refresh() }
     }
 
     fun renamePath(oldPath: String, newName: String, id: String? = null) {
-        viewModelScope.launch {
-            fileOpsUseCase.renamePath(oldPath, newName, id)
-            refresh()
-        }
+        viewModelScope.launch { fileOpsUseCase.renamePath(oldPath, newName, id); refresh() }
     }
 
     fun toggleSelection(idOrPath: String) {
@@ -208,15 +171,10 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
         else selectionSet.add(idOrPath)
     }
 
-    fun clearSelection() {
-        selectionSet.clear()
-    }
+    fun clearSelection() { selectionSet.clear() }
 
     fun toggleBulkStatus(idsOrPaths: Collection<String>, isLocked: Boolean? = null, isStarred: Boolean? = null) {
-        viewModelScope.launch {
-            fileOpsUseCase.toggleStatus(idsOrPaths.toSet(), isLocked, isStarred)
-            refresh()
-        }
+        viewModelScope.launch { fileOpsUseCase.toggleStatus(idsOrPaths.toSet(), isLocked, isStarred); refresh() }
     }
 
     fun uploadFiles(uris: List<Uri>) {
@@ -224,9 +182,7 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
             uris.forEach { uri ->
                 val name = UUID.randomUUID().toString() 
                 transferProgress[name] = 0f
-                uploadFileUseCase(uri, currentPath.trim('/') + "/$name", 8 * 1024 * 1024) { 
-                    transferProgress[name] = it
-                }
+                uploadFileUseCase(uri, currentPath.trim('/') + "/$name", 8 * 1024 * 1024) { transferProgress[name] = it }
             }
             refresh()
         }
@@ -239,7 +195,6 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    // Sharing
     fun loadShareLinks() {
         viewModelScope.launch {
             val settings = repository.getShareSettings()
@@ -258,22 +213,15 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun revokeShareLink(id: String, token: String) {
-        viewModelScope.launch {
-            // repository.revokeShareLink(id, token)
-            loadShareLinks()
-        }
+        viewModelScope.launch { loadShareLinks() }
     }
 
     fun revokeAllLinks() {
-        viewModelScope.launch {
-            // repository.revokeAllLinks()
-            loadShareLinks()
-        }
+        viewModelScope.launch { loadShareLinks() }
     }
 
-    // Security
     fun checkHasPin(onResult: (Boolean) -> Unit) {
-        viewModelScope.launch { onResult(repository.verifyPin("")) } // Dummy check
+        viewModelScope.launch { onResult(repository.verifyPin("")) }
     }
 
     fun verifyPin(pin: String, onResult: (Boolean) -> Unit) {
@@ -284,24 +232,18 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    // Move/Copy
     fun startMove(items: Collection<String>) { moveCopyMode = "move"; moveCopyItems = items.toSet() }
     fun startCopy(items: Collection<String>) { moveCopyMode = "copy"; moveCopyItems = items.toSet() }
     fun paste(dest: String) { 
         viewModelScope.launch {
-            moveCopyItems.forEach { item ->
-                if (moveCopyMode == "move") repository.renamePath(item, dest)
-            }
+            moveCopyItems.forEach { item -> if (moveCopyMode == "move") repository.renamePath(item, dest) }
             moveCopyMode = null
             moveCopyItems = emptySet()
             refresh()
         }
     }
     fun unlockTo(items: Collection<String>, dest: String) {
-        viewModelScope.launch {
-            repository.bulkSetStatus(items.toSet(), isLocked = false)
-            refresh()
-        }
+        viewModelScope.launch { repository.bulkSetStatus(items.toSet(), isLocked = false); refresh() }
     }
     fun exportCloudSaveAsZip(name: String, onResult: (File?) -> Unit) { }
     fun updateLanguage(code: String) { language = code; prefs.edit().putString("language", code).apply() }

@@ -1,15 +1,10 @@
 package com.disbox.mobile.data.repository
 
 import android.content.Context
-import android.os.Environment
 import androidx.room.withTransaction
 import com.disbox.mobile.utils.CryptoUtils
 import com.disbox.mobile.data.service.DisboxApiService
-import com.disbox.mobile.model.ShareLink
-import com.disbox.mobile.model.ShareSettings
-import com.disbox.mobile.model.DisboxFile
-import com.disbox.mobile.model.MessageId
-import com.disbox.mobile.model.MetadataContainer
+import com.disbox.mobile.model.*
 import com.disbox.mobile.FileEntity
 import com.disbox.mobile.MetadataSyncEntity
 import com.disbox.mobile.SettingsEntity
@@ -46,7 +41,7 @@ class DisboxRepository(
         dir
     }
 
-    suspend fun init(url: String, forceSyncId: String? = null): String = withContext(Dispatchers.IO) {
+    suspend fun init(url: String, forceId: String? = null): String = withContext(Dispatchers.IO) {
         webhookUrl = url
         hashedWebhook = hashWebhook(url)
         encryptionKey = CryptoUtils.deriveKey(url)

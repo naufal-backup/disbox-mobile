@@ -123,16 +123,4 @@ fun MainNavigation(viewModel: DisboxViewModel) {
             composable(Screen.Settings.route) { SettingsScreen(viewModel) }
         }
     }
-    
-    // Listen for ViewModel page changes if needed for legacy compatibility
-    LaunchedEffect(viewModel.activePage) {
-        val route = when(viewModel.activePage) {
-            "settings" -> Screen.Settings.route
-            "cloudsave" -> Screen.CloudSave.route
-            else -> null
-        }
-        if (route != null && currentRoute != route) {
-            navController.navigate(route)
-        }
-    }
 }
