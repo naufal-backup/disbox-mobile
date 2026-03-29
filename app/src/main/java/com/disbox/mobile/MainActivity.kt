@@ -11,6 +11,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.navigation.compose.NavHost
@@ -21,23 +22,15 @@ import com.disbox.mobile.navigation.Screen
 import com.disbox.mobile.ui.components.*
 import com.disbox.mobile.ui.screens.*
 import com.disbox.mobile.ui.theme.DisboxTheme
-import androidx.compose.foundation.layout.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.media3.exoplayer.ExoPlayer
 
 class MainActivity : ComponentActivity() {
-    @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
             val viewModel: DisboxViewModel = viewModel()
-            val accentColor = remember(viewModel.accentColor) { 
-                try { Color(android.graphics.Color.parseColor(viewModel.accentColor)) } 
+            val accentColorHex = viewModel.accentColor
+            val accentColor = remember(accentColorHex) { 
+                try { Color(android.graphics.Color.parseColor(accentColorHex)) } 
                 catch (e: Exception) { Color(0xFF5865F2) } 
             }
 

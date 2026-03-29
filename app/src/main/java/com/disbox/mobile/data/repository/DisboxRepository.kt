@@ -5,7 +5,11 @@ import android.os.Environment
 import androidx.room.withTransaction
 import com.disbox.mobile.utils.CryptoUtils
 import com.disbox.mobile.data.service.DisboxApiService
-import com.disbox.mobile.model.*
+import com.disbox.mobile.model.ShareLink
+import com.disbox.mobile.model.ShareSettings
+import com.disbox.mobile.model.DisboxFile
+import com.disbox.mobile.model.MessageId
+import com.disbox.mobile.model.MetadataContainer
 import com.disbox.mobile.FileEntity
 import com.disbox.mobile.MetadataSyncEntity
 import com.disbox.mobile.SettingsEntity
@@ -334,7 +338,17 @@ class DisboxRepository(
             val msgIds = msgIdsRaw.map { mapOf("msgId" to it.msgId, "index" to it.index) }
             val encKey = android.util.Base64.encodeToString(encryptionKey, android.util.Base64.NO_WRAP)
 
-            val body = mapOf("token" to token, "fileId" to fileId, "filePath" to filePath, "permission" to permission, "expiresAt" to expiresAt, "webhookHash" to hash, "messageIds" to msgIds, "encryptionKeyB64" to encKey, "webhookUrl" to baseUrl)
+            val body: Map<String, Any> = mapOf(
+                "token" to token, 
+                "fileId" to (fileId ?: ""), 
+                "filePath" to filePath, 
+                "permission" to permission, 
+                "expiresAt" to (expiresAt ?: 0L), 
+                "webhookHash" to hash, 
+                "messageIds" to msgIds, 
+                "encryptionKeyB64" to encKey, 
+                "webhookUrl" to baseUrl
+            )
             
             apiService.createShareLink(workerUrl, "disbox-shared-link-0001", body)?.let {
                 val id = UUID.randomUUID().toString()

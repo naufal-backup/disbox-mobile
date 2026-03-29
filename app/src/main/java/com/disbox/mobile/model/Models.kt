@@ -32,9 +32,9 @@ data class ShareLink(
 data class ShareSettings(
     @SerializedName("hash") val hash: String,
     @SerializedName("mode") val mode: String = "public",
-    @SerializedName("cf_worker_url") val cf_worker_url: String?,
-    @SerializedName("cf_api_token") val cf_api_token: String?,
-    @SerializedName("webhook_url") val webhook_url: String?,
+    @SerializedName("cf_worker_url") val cf_worker_url: String? = null,
+    @SerializedName("cf_api_token") val cf_api_token: String? = null,
+    @SerializedName("webhook_url") val webhook_url: String? = null,
     @SerializedName("enabled") val enabled: Boolean = false
 )
 
