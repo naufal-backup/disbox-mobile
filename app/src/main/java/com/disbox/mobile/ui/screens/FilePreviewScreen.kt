@@ -25,7 +25,9 @@ import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
-import com.disbox.mobile.DiscordDataSourceFactory
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.ui.text.style.TextOverflow
+import com.disbox.mobile.data.DiscordDataSourceFactory
 import com.disbox.mobile.DisboxViewModel
 import com.disbox.mobile.model.DisboxFile
 import com.disbox.mobile.ui.components.ShareDialog

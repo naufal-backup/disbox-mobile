@@ -3,10 +3,15 @@ package com.disbox.mobile.data.repository
 import android.content.Context
 import android.os.Environment
 import androidx.room.withTransaction
-import com.disbox.mobile.*
+import com.disbox.mobile.utils.CryptoUtils
 import com.disbox.mobile.data.service.DisboxApiService
 import com.disbox.mobile.model.*
-import com.disbox.mobile.utils.CryptoUtils
+import com.disbox.mobile.FileEntity
+import com.disbox.mobile.MetadataSyncEntity
+import com.disbox.mobile.SettingsEntity
+import com.disbox.mobile.ShareSettingsEntity
+import com.disbox.mobile.ShareLinkEntity
+import com.disbox.mobile.DisboxDatabase
 import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -307,7 +312,7 @@ class DisboxRepository(
     }
 
     suspend fun getShareSettings(): ShareSettings {
-        val hash = hashedWebhook ?: return ShareSettings("", enabled = false, null, null, null)
+        val hash = hashedWebhook ?: return ShareSettings("")
         return shareSettingsDao.getSettings(hash)?.let { ShareSettings(it.hash, it.mode, it.cf_worker_url, it.cf_api_token, it.webhook_url, it.enabled == 1) }
             ?: ShareSettings(hash, "public", "https://disbox-shared-link.naufal-backup.workers.dev", null, webhookUrl, false)
     }

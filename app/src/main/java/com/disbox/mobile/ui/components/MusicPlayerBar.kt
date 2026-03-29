@@ -22,7 +22,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.media3.exoplayer.ExoPlayer
 import com.disbox.mobile.DisboxViewModel
-import com.disbox.mobile.NotificationHelper
+import com.disbox.mobile.utils.NotificationHelper
 import com.disbox.mobile.utils.formatTime
 import kotlinx.coroutines.delay
 import java.io.File
