@@ -27,7 +27,7 @@ val JetBrainsMonoFont = FontFamily(
     Font(googleFont = GoogleFont("JetBrains Mono"), fontProvider = provider)
 )
 
-val Typography = Typography(
+val AppTypography = Typography(
     displayLarge = TextStyle(
         fontFamily = SyneFont,
         fontWeight = FontWeight.ExtraBold,
