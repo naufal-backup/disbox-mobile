@@ -68,7 +68,7 @@ fun FileThumbnail(file: DisboxFile, viewModel: DisboxViewModel, modifier: Modifi
         }
         isLoading = true
         try {
-            viewModel.api?.downloadFile(file, targetFile) { }
+            viewModel.downloadFile(file)
             if (targetFile.exists()) {
                 thumbFile = targetFile
                 if (isAudio) {

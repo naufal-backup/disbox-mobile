@@ -1,6 +1,7 @@
 package com.disbox.mobile.ui.screens
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.HorizontalPager
@@ -19,14 +20,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
-import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.ui.text.style.TextOverflow
 import com.disbox.mobile.data.DiscordDataSourceFactory
 import com.disbox.mobile.DisboxViewModel
 import com.disbox.mobile.model.DisboxFile
@@ -191,7 +191,7 @@ fun MediaPreviewItem(file: DisboxFile, viewModel: DisboxViewModel, isActive: Boo
             } else {
                 if (!tempFile.exists() || tempFile.length() == 0L) {
                     isDownloadingPreview = true
-                    viewModel.api?.downloadFile(file, tempFile) { }
+                    viewModel.downloadFile(file)
                     isDownloadingPreview = false
                 }
 
