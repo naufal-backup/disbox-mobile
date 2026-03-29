@@ -335,10 +335,10 @@ class DisboxRepository(
             val file = if (fileId != null) fileDao.getFileById(fileId, hash) else fileDao.getFileByPath(filePath.trim('/'), hash)
             val msgIdsRaw = gson.fromJson<List<MessageId>>(file?.messageIds ?: "[]", object : TypeToken<List<MessageId>>() {}.type)
             val msgIds: List<Map<String, Any>> = msgIdsRaw.map { 
-                mapOf<String, Any>(
-                    "msgId" to it.msgId,
-                    "index" to it.index
-                )
+                val m = HashMap<String, Any>()
+                m["msgId"] = it.msgId
+                m["index"] = it.index
+                m.toMap()
             }
             val encKey = android.util.Base64.encodeToString(encryptionKey, android.util.Base64.NO_WRAP)
 
