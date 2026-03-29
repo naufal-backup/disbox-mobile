@@ -353,7 +353,7 @@ class DisboxRepository(
             body["encryptionKeyB64"] = encKey
             body["webhookUrl"] = baseUrl
             
-            apiService.createShareLink(workerUrl, "disbox-shared-link-0001", body as Any)?.let {
+            apiService.createShareLink(workerUrl, "disbox-shared-link-0001", body as Map<String, Any>)?.let {
                 val id = UUID.randomUUID().toString()
                 shareLinkDao.insertOrReplace(ShareLinkEntity(id, hash, filePath, fileId, token, permission, expiresAt, System.currentTimeMillis()))
                 uploadMetadataToDiscord()
