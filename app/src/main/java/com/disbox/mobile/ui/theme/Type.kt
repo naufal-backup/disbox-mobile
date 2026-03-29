@@ -9,21 +9,21 @@ import androidx.compose.ui.text.googlefonts.GoogleFont
 import androidx.compose.ui.unit.sp
 import com.disbox.mobile.R
 
-val provider = GoogleFont.Provider(
+private val provider = GoogleFont.Provider(
     providerAuthority = "com.google.android.gms.fonts",
     providerPackage = "com.google.android.gms",
     certificates = R.array.com_google_android_gms_fonts_certs
 )
 
-val SyneFont = FontFamily(
+private val SyneFont = FontFamily(
     Font(googleFont = GoogleFont("Syne"), fontProvider = provider)
 )
 
-val InterFont = FontFamily(
+private val InterFont = FontFamily(
     Font(googleFont = GoogleFont("Inter"), fontProvider = provider)
 )
 
-val JetBrainsMonoFont = FontFamily(
+private val JetBrainsMonoFont = FontFamily(
     Font(googleFont = GoogleFont("JetBrains Mono"), fontProvider = provider)
 )
 
