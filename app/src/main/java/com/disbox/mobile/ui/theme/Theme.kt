@@ -51,7 +51,7 @@ private val LightColorScheme = lightColorScheme(
     error = Color(0xFFED4245)
 )
 
-private val AppTypography = Typography(
+private val AppTypography = androidx.compose.material3.Typography(
     displayLarge = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.ExtraBold, fontSize = 32.sp),
     headlineMedium = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.Bold, fontSize = 24.sp),
     bodyLarge = TextStyle(fontFamily = FontFamily.Default, fontWeight = FontWeight.Normal, fontSize = 16.sp),
@@ -85,7 +85,7 @@ fun DisboxMobileTheme(
         }
     }
 
-    MaterialTheme(
+    androidx.compose.material3.MaterialTheme(
         colorScheme = colorScheme,
         typography = AppTypography,
         content = content
