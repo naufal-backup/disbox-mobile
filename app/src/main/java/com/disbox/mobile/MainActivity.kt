@@ -29,12 +29,14 @@ class MainActivity : ComponentActivity() {
         setContent {
             val viewModel: DisboxViewModel = viewModel()
             val accentColorHex = viewModel.accentColor
+            val theme = viewModel.theme
+            
             val accentColor = remember(accentColorHex) { 
                 try { Color(android.graphics.Color.parseColor(accentColorHex)) } 
                 catch (e: Exception) { Color(0xFF5865F2) } 
             }
 
-            DisboxTheme(darkTheme = viewModel.theme == "dark", accentColor = accentColor) {
+            DisboxTheme(darkTheme = (theme == "dark"), accentColor = accentColor) {
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     if (!viewModel.isConnected) {
                         LoginScreen(viewModel)
@@ -52,9 +54,10 @@ fun MainNavigation(viewModel: DisboxViewModel) {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
+    val context = androidx.compose.ui.platform.LocalContext.current
     
     val exoPlayer = remember {
-        ExoPlayer.Builder(viewModel.getApplication()).build()
+        ExoPlayer.Builder(context).build()
     }
     
     DisposableEffect(exoPlayer) {
