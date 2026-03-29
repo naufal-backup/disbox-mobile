@@ -15,6 +15,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
+import com.disbox.mobile.ui.theme.Typography
 
 private val DarkColorScheme = darkColorScheme(
     primary = Color(0xFF5865F2), // accent
