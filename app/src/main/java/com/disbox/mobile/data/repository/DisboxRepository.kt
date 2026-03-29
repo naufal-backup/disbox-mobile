@@ -342,7 +342,7 @@ class DisboxRepository(
             }
             val encKey = android.util.Base64.encodeToString(encryptionKey, android.util.Base64.NO_WRAP)
 
-            val body = mapOf<String, Any>(
+            val body: Any = mapOf<String, Any>(
                 "token" to token,
                 "fileId" to (fileId ?: ""),
                 "filePath" to filePath,
