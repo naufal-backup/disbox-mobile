@@ -4,11 +4,7 @@ import android.content.Context
 import androidx.room.withTransaction
 import com.disbox.mobile.utils.CryptoUtils
 import com.disbox.mobile.data.service.DisboxApiService
-import com.disbox.mobile.model.ShareLink
-import com.disbox.mobile.model.ShareSettings
-import com.disbox.mobile.model.DisboxFile
-import com.disbox.mobile.model.MessageId
-import com.disbox.mobile.model.MetadataContainer
+import com.disbox.mobile.model.*
 import com.disbox.mobile.FileEntity
 import com.disbox.mobile.MetadataSyncEntity
 import com.disbox.mobile.SettingsEntity
@@ -334,7 +330,7 @@ class DisboxRepository(
             
             val file = if (fileId != null) fileDao.getFileById(fileId, hash) else fileDao.getFileByPath(filePath.trim('/'), hash)
             val msgIdsRaw = gson.fromJson<List<MessageId>>(file?.messageIds ?: "[]", object : TypeToken<List<MessageId>>() {}.type)
-            val msgIds = msgIdsRaw.map { 
+            val msgIds: List<MessageIdRequest> = msgIdsRaw.map { 
                 MessageIdRequest(it.msgId, it.index)
             }
             val encKey = android.util.Base64.encodeToString(encryptionKey, android.util.Base64.NO_WRAP)
@@ -350,9 +346,8 @@ class DisboxRepository(
                 encryptionKeyB64 = encKey,
                 webhookUrl = baseUrl
             )
-
+            
             apiService.createShareLink(workerUrl, "disbox-shared-link-0001", request)?.let {
-
                 val id = UUID.randomUUID().toString()
                 shareLinkDao.insertOrReplace(ShareLinkEntity(id, hash, filePath, fileId, token, permission, expiresAt, System.currentTimeMillis()))
                 uploadMetadataToDiscord()
