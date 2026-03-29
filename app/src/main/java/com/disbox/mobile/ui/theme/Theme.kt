@@ -80,7 +80,7 @@ fun DisboxMobileTheme(
 
     MaterialTheme(
         colorScheme = colorScheme,
-        typography = Typography,
+        typography = com.disbox.mobile.ui.theme.Typography,
         content = content
     )
 }
