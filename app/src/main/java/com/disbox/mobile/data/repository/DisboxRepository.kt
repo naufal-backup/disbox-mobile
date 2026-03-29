@@ -354,7 +354,7 @@ class DisboxRepository(
                 "webhookUrl" to baseUrl
             )
 
-            apiService.createShareLink(workerUrl, "disbox-shared-link-0001", body)?.let {
+            apiService.createShareLink(workerUrl, "disbox-shared-link-0001", gson.toJson(body))?.let {
 
                 val id = UUID.randomUUID().toString()
                 shareLinkDao.insertOrReplace(ShareLinkEntity(id, hash, filePath, fileId, token, permission, expiresAt, System.currentTimeMillis()))
