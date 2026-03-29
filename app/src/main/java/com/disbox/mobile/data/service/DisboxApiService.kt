@@ -116,7 +116,7 @@ class DisboxApiService {
         }
     }
 
-    suspend fun createShareLink(workerUrl: String, apiKey: String, bodyMap: Map<String, Any>): Map<String, Any>? {
+    suspend fun createShareLink(workerUrl: String, apiKey: String, bodyMap: Map<String, Any?>): Map<String, Any>? {
         val body = gson.toJson(bodyMap).toRequestBody("application/json".toMediaTypeOrNull())
         val request = Request.Builder()
             .url("$workerUrl/share/create")
