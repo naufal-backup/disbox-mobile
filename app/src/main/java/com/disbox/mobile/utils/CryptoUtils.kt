@@ -1,4 +1,4 @@
-package com.disbox.mobile
+package com.disbox.mobile.utils
 
 import java.security.MessageDigest
 import java.security.SecureRandom

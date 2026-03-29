@@ -1,4 +1,4 @@
-package com.disbox.mobile
+package com.disbox.mobile.utils
 
 object I18n {
     private val translations = mapOf(

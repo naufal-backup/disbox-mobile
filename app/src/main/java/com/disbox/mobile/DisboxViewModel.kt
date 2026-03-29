@@ -8,7 +8,6 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.disbox.mobile.data.repository.DisboxRepository
 import com.disbox.mobile.data.service.DisboxApiService
-import com.disbox.mobile.DisboxDatabase
 import com.disbox.mobile.domain.usecase.SyncMetadataUseCase
 import com.disbox.mobile.domain.usecase.UploadFileUseCase
 import com.disbox.mobile.domain.usecase.DownloadFileUseCase
