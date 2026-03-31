@@ -260,7 +260,7 @@ class DisboxRepository(
 
     suspend fun getShareLinks(): List<ShareLink> {
         val hash = hashedWebhook ?: return emptyList()
-        return shareLinkDao.getAllLinksByHash(hash).map { ShareLink(it.id, it.hash, it.file_path, it.file_id, it.token, it.permission, it.expires_at, it.created_at) }
+        return shareLinkDao.getAllLinksByHash(hash).map { ShareLink(it.id, it.hash, it.filePath, it.fileId, it.token, it.permission, it.expiresAt, it.createdAt) }
     }
 
     suspend fun createShareLink(filePath: String, fileId: String?, permission: String, expiresAt: Long?): Map<String, Any> = withContext(Dispatchers.IO) {
@@ -274,7 +274,8 @@ class DisboxRepository(
             val msgIds = msgIdsRaw.map { MessageIdRequest(it.msgId, it.index) }
             val encKey = android.util.Base64.encodeToString(encryptionKey, android.util.Base64.NO_WRAP)
             val request = ShareLinkRequest(token, fileId, filePath, permission, expiresAt, hash, msgIds, encKey, baseUrl)
-            apiService.createShareLink(workerUrl, "disbox-shared-link-0001", gson.toJson(request))?.let {
+            val res = apiService.createShareLink(workerUrl, "disbox-shared-link-0001", gson.toJson(request))
+            if (res != null && res["ok"] == true) {
                 shareLinkDao.insertOrReplace(ShareLinkEntity(UUID.randomUUID().toString(), hash, filePath, fileId, token, permission, expiresAt, System.currentTimeMillis()))
                 return@withContext mapOf("ok" to true, "link" to "$workerUrl/share/$token")
             }

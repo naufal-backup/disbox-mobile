@@ -178,16 +178,14 @@ fun MediaPreviewItem(file: DisboxFile, viewModel: DisboxViewModel, isActive: Boo
             val isMedia = videoExts.contains(ext) || ext == "mp3" || ext == "wav" || ext == "flac" || ext == "ogg"
 
             if (isMedia) {
-                val api = viewModel.api
-                if (api != null) {
-                    val dataSourceFactory = DiscordDataSourceFactory(api, file)
-                    val mediaSource = androidx.media3.exoplayer.source.ProgressiveMediaSource.Factory(dataSourceFactory)
-                        .createMediaSource(MediaItem.fromUri("disbox-stream://${file.id}.$ext"))
-                    exoPlayer.setMediaSource(mediaSource)
-                    exoPlayer.prepare()
-                    exoPlayer.playWhenReady = true
-                    previewVideoFile = File("stream")
-                }
+                val api = viewModel.repository
+                val dataSourceFactory = DiscordDataSourceFactory(api, file)
+                val mediaSource = androidx.media3.exoplayer.source.ProgressiveMediaSource.Factory(dataSourceFactory)
+                    .createMediaSource(MediaItem.fromUri("disbox-stream://${file.id}.$ext"))
+                exoPlayer.setMediaSource(mediaSource)
+                exoPlayer.prepare()
+                exoPlayer.playWhenReady = true
+                previewVideoFile = File("stream")
             } else {
                 if (!tempFile.exists() || tempFile.length() == 0L) {
                     isDownloadingPreview = true
@@ -214,7 +212,7 @@ fun MediaPreviewItem(file: DisboxFile, viewModel: DisboxViewModel, isActive: Boo
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 CircularProgressIndicator(color = Color.White)
                 Spacer(Modifier.height(16.dp))
-                Text(viewModel.t("downloading_preview"), fontSize = 12.sp, color = Color.White.copy(0.7f))
+                Text("Mengunduh pratinjau...", fontSize = 12.sp, color = Color.White.copy(0.7f))
             }
         } else if (errorMsg != null) {
             Text(errorMsg!!, color = MaterialTheme.colorScheme.error)
@@ -245,7 +243,7 @@ fun MediaPreviewItem(file: DisboxFile, viewModel: DisboxViewModel, isActive: Boo
         } else {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(getFileIcon(name), fontSize = 64.sp)
-                Text(viewModel.t("no_preview"), color = Color.White.copy(alpha = 0.6f))
+                Text("Pratinjau tidak tersedia", color = Color.White.copy(alpha = 0.6f))
             }
         }
     }

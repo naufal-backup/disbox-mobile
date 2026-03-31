@@ -35,7 +35,7 @@ fun SharedScreen(viewModel: DisboxViewModel) {
     ) {
         item {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text(viewModel.t("shared_by_me"), fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                Text("Dibagikan oleh Saya", fontSize = 24.sp, fontWeight = FontWeight.Bold)
                 if (viewModel.shareLinks.isNotEmpty()) {
                     TextButton(
                         onClick = { showRevokeAllConfirm = true },
@@ -43,7 +43,7 @@ fun SharedScreen(viewModel: DisboxViewModel) {
                     ) {
                         Icon(Icons.Default.DeleteSweep, null, Modifier.size(18.dp))
                         Spacer(Modifier.width(4.dp))
-                        Text(viewModel.t("revoke_all"))
+                        Text("Revoke Semua")
                     }
                 }
             }
@@ -56,8 +56,8 @@ fun SharedScreen(viewModel: DisboxViewModel) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Icon(Icons.Default.LinkOff, null, Modifier.size(64.dp), Color.Gray.copy(alpha = 0.5f))
                         Spacer(Modifier.height(16.dp))
-                        Text(viewModel.t("no_shared_links"), fontWeight = FontWeight.Bold)
-                        Text(viewModel.t("shared_hint"), fontSize = 12.sp, color = Color.Gray)
+                        Text("Belum ada link bersama", fontWeight = FontWeight.Bold)
+                        Text("Klik kanan/tahan file untuk membagikan.", fontSize = 12.sp, color = Color.Gray)
                     }
                 }
             }
@@ -74,14 +74,14 @@ fun SharedScreen(viewModel: DisboxViewModel) {
                             Text(fileName, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Text(
-                                    if (link.permission == "download") viewModel.t("download_perm") else viewModel.t("view_only"),
+                                    if (link.permission == "download") "Download" else "Lihat Saja",
                                     fontSize = 10.sp, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold
                                 )
-                                val expiryText = if (link.expires_at == null) viewModel.t("permanent")
+                                val expiryText = if (link.expires_at == null) "Permanen"
                                     else {
                                         val diff = link.expires_at - System.currentTimeMillis()
-                                        if (diff <= 0) viewModel.t("expired")
-                                        else viewModel.t("days_left", mapOf("days" to (Math.ceil(diff.toDouble() / (24 * 3600 * 1000)).toInt().toString())))
+                                        if (diff <= 0) "Expired"
+                                        else "Sisa hari lagi"
                                     }
                                 Text(expiryText, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
                             }
@@ -90,7 +90,7 @@ fun SharedScreen(viewModel: DisboxViewModel) {
                             val fullUrl = "${viewModel.cfWorkerUrl}/share/${link.token}"
                             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
                             clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Disbox Link", fullUrl))
-                            android.widget.Toast.makeText(context, viewModel.t("copy_link"), android.widget.Toast.LENGTH_SHORT).show()
+                            android.widget.Toast.makeText(context, "Link disalin!", android.widget.Toast.LENGTH_SHORT).show()
                         }) { Icon(Icons.Default.ContentCopy, null, Modifier.size(18.dp)) }
                         IconButton(onClick = { viewModel.revokeShareLink(link.id, link.token) }) {
                             Icon(Icons.Default.LinkOff, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error)
@@ -104,15 +104,15 @@ fun SharedScreen(viewModel: DisboxViewModel) {
     if (showRevokeAllConfirm) {
         AlertDialog(
             onDismissRequest = { showRevokeAllConfirm = false },
-            title = { Text(viewModel.t("revoke_all_confirm")) },
-            text = { Text(viewModel.t("revoke_all_desc")) },
+            title = { Text("Revoke Semua Link?") },
+            text = { Text("Semua link yang telah dibagikan tidak akan bisa diakses lagi.") },
             confirmButton = {
                 Button(
                     onClick = { viewModel.revokeAllLinks(); showRevokeAllConfirm = false },
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                ) { Text(viewModel.t("confirm")) }
+                ) { Text("Ya, Revoke Semua") }
             },
-            dismissButton = { TextButton(onClick = { showRevokeAllConfirm = false }) { Text(viewModel.t("cancel")) } }
+            dismissButton = { TextButton(onClick = { showRevokeAllConfirm = false }) { Text("Batal") } }
         )
     }
 }
