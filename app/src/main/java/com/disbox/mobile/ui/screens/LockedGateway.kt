@@ -24,7 +24,14 @@ fun LockedGateway(viewModel: DisboxViewModel) {
     var error by remember { mutableStateOf("") }
     var hasPin by remember { mutableStateOf(true) }
     var checking by remember { mutableStateOf(true) }
-    LaunchedEffect(Unit) { viewModel.checkHasPin { hasPin = it; checking = false } }
+    
+    LaunchedEffect(Unit) {
+        viewModel.checkHasPin { 
+            hasPin = it
+            checking = false 
+        }
+    }
+    
     if (checking) return
     
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -50,10 +57,10 @@ fun LockedGateway(viewModel: DisboxViewModel) {
                 Spacer(Modifier.height(24.dp))
                 
                 if (!hasPin) {
-                    Text(viewModel.t("pin_not_set"), fontSize = 20.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+                    Text("PIN Belum Diatur", fontSize = 20.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        viewModel.t("pin_not_set_desc"), 
+                        "Silakan atur PIN master di pengaturan untuk mengakses area terkunci.", 
                         textAlign = TextAlign.Center, 
                         fontSize = 14.sp,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
@@ -64,13 +71,13 @@ fun LockedGateway(viewModel: DisboxViewModel) {
                         modifier = Modifier.fillMaxWidth().height(56.dp),
                         shape = RoundedCornerShape(16.dp)
                     ) { 
-                        Text(viewModel.t("settings"), fontWeight = FontWeight.Bold) 
+                        Text("Buka Pengaturan", fontWeight = FontWeight.Bold) 
                     }
                 } else {
-                    Text(viewModel.t("locked_area"), fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, textAlign = TextAlign.Center)
+                    Text("Area Terkunci", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, textAlign = TextAlign.Center)
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        viewModel.t("locked_area_desc"), 
+                        "Masukkan PIN master Anda untuk membuka akses.", 
                         textAlign = TextAlign.Center, 
                         fontSize = 13.sp,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
@@ -110,9 +117,9 @@ fun LockedGateway(viewModel: DisboxViewModel) {
                     
                     Button(
                         onClick = { 
-                            viewModel.verifyPin(pin) { 
-                                if (!it) { 
-                                    error = viewModel.t("pin_error_wrong")
+                            viewModel.verifyPin(pin) { success ->
+                                if (!success) { 
+                                    error = "PIN salah!"
                                     pin = "" 
                                 } 
                             } 
@@ -124,7 +131,7 @@ fun LockedGateway(viewModel: DisboxViewModel) {
                     ) { 
                         Icon(Icons.Default.Key, null, Modifier.size(18.dp))
                         Spacer(Modifier.width(8.dp))
-                        Text(viewModel.t("unlock_access"), fontWeight = FontWeight.Bold) 
+                        Text("Buka Akses", fontWeight = FontWeight.Bold) 
                     }
                 }
             }

@@ -48,7 +48,7 @@ fun LoginScreen(viewModel: DisboxViewModel) {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     ModeButton("Masuk dengan Akun", Icons.Default.Person, MaterialTheme.colorScheme.primary) { mode = "login" }
                     ModeButton("Daftar Akun Baru", Icons.Default.PersonAdd, MaterialTheme.colorScheme.secondary) { mode = "register" }
-                    ModeButton("Setup Baru (Guest)", Icons.Default.Zap, MaterialTheme.colorScheme.tertiary) { mode = "guest" }
+                    ModeButton("Setup Baru (Guest)", Icons.Default.FlashOn, MaterialTheme.colorScheme.tertiary) { mode = "guest" }
                 }
             } else {
                 Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {

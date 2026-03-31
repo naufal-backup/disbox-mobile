@@ -27,7 +27,7 @@ import androidx.compose.ui.unit.sp
 import com.disbox.mobile.DisboxViewModel
 import com.disbox.mobile.model.DisboxFile
 import com.disbox.mobile.ui.components.*
-import com.disbox.mobile.utils.isAudioFile
+import com.disbox.mobile.utils.FileUtils
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -124,7 +124,7 @@ fun DriveScreen(viewModel: DisboxViewModel, isLockedView: Boolean = false, isSta
                             onLongClick = { viewModel.toggleSelection(f.id) },
                             onClick = {
                                 if (viewModel.selectionSet.isNotEmpty()) viewModel.toggleSelection(f.id)
-                                else if (isAudioFile(f.path)) viewModel.currentPlayingFile = f else previewFile = f
+                                else if (com.disbox.mobile.utils.isAudioFile(f.path)) viewModel.currentPlayingFile = f else previewFile = f
                             },
                             modifier = if (f.isOptimistic) Modifier.alpha(0.5f) else Modifier
                         )
@@ -151,7 +151,7 @@ fun DriveScreen(viewModel: DisboxViewModel, isLockedView: Boolean = false, isSta
                             onLongClick = { viewModel.toggleSelection(f.id) },
                             onClick = {
                                 if (viewModel.selectionSet.isNotEmpty()) viewModel.toggleSelection(f.id)
-                                else if (isAudioFile(f.path)) viewModel.currentPlayingFile = f else previewFile = f
+                                else if (com.disbox.mobile.utils.isAudioFile(f.path)) viewModel.currentPlayingFile = f else previewFile = f
                             },
                             modifier = if (f.isOptimistic) Modifier.alpha(0.5f) else Modifier
                         )

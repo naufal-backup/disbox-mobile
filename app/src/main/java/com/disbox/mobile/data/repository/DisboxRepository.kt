@@ -56,8 +56,6 @@ class DisboxRepository(
     suspend fun syncMetadata(forceId: String? = null, metadataUrl: String? = null, forceSync: Boolean = false): Boolean = withContext(Dispatchers.IO) {
         try {
             val id = identifier.ifEmpty { return@withContext false }
-            
-            // 1. Prioritas Utama: Supabase (Row-level files)
             val cloudFilesRes = apiService.listFiles(id)
             if (cloudFilesRes != null && cloudFilesRes["ok"] == true) {
                 val files = gson.fromJson<List<DisboxFile>>(gson.toJson(cloudFilesRes["files"]), object : TypeToken<List<DisboxFile>>() {}.type)
@@ -67,10 +65,7 @@ class DisboxRepository(
                 }
             }
 
-            // 2. Fallback: Migrasi Legacy (CDN/Discord)
             var legacyContainer: MetadataContainer? = null
-            
-            // A. Cek Legacy Blob di Cloud Config
             apiService.getCloudConfig(id)?.let { cfg ->
                 val b64 = cfg["metadata_b64"] as? String
                 if (b64 != null) {
@@ -80,15 +75,13 @@ class DisboxRepository(
                 }
             }
 
-            // B. Cek Metadata URL (CDN)
             if (legacyContainer == null && metadataUrl?.startsWith("http") == true) {
                 legacyContainer = downloadMetadataFromUrl(metadataUrl)
             }
 
-            // C. Cek Discord Discovery
             if (legacyContainer == null) {
-                val disc = getMsgIdFromDiscovery(forceSync) as? Map<String, Any>
-                val bestId = forceId ?: disc?.get("best") as? String
+                val webhookMsgId = getWebhookMsgId()
+                val bestId = forceId ?: webhookMsgId
                 if (bestId != null) {
                     legacyContainer = downloadMetadataFromMsg(bestId)
                 }
@@ -96,26 +89,22 @@ class DisboxRepository(
 
             if (legacyContainer != null) {
                 val files = legacyContainer!!.files
-                // Migrasi ke Supabase Rows
                 files.forEach { apiService.upsertFile(id, it) }
                 saveMetadataToLocal(files)
                 return@withContext true
             }
 
-            // Jika benar-benar baru, init array kosong agar tidak looping
             if (forceSync) saveMetadataToLocal(emptyList())
-            
             false
         } catch (e: Exception) { e.printStackTrace(); false }
     }
 
-    private suspend fun getMsgIdFromDiscovery(force: Boolean): Any? {
-        var webhookMsgId: String? = null
+    private suspend fun getWebhookMsgId(): String? {
         apiService.getWebhookInfo(baseUrl)?.let { info ->
             val name = info["name"] as? String
-            webhookMsgId = Regex("(?:dbx|disbox|db)[:\\s]+(\\d+)", RegexOption.IGNORE_CASE).find(name ?: "")?.groupValues?.get(1)
+            return Regex("(?:dbx|disbox|db)[:\\s]+(\\d+)", RegexOption.IGNORE_CASE).find(name ?: "")?.groupValues?.get(1)
         }
-        return mapOf("best" to webhookMsgId)
+        return null
     }
 
     private suspend fun downloadMetadataFromUrl(url: String): MetadataContainer {
@@ -130,7 +119,6 @@ class DisboxRepository(
         val attachments = msg["attachments"] as? List<Map<String, Any>>
         val url = attachments?.firstOrNull { (it["filename"] as? String)?.contains("metadata.json") == true }?.get("url") as? String
             ?: attachments?.firstOrNull()?.get("url") as? String ?: throw Exception("No attachment")
-
         return downloadMetadataFromUrl(url)
     }
 
@@ -148,19 +136,13 @@ class DisboxRepository(
 
     suspend fun persistCloud(files: List<DisboxFile>) {
         val id = identifier.ifEmpty { return }
-        // Background task: Sync All to Supabase
         withContext(Dispatchers.IO) {
             apiService.syncAllFiles(id, files)
-            
-            // Backup as Blob also
             val pin = settingsDao.getSetting(hashedWebhook!!, "pin_hash")?.value
             val container = MetadataContainer(files = files, pinHash = pin)
             val json = gson.toJson(container)
             val encrypted = encryptionKey?.let { CryptoUtils.encrypt(json.toByteArray(), it) } ?: json.toByteArray()
-            
-            apiService.uploadFile(baseUrl, "metadata.json", encrypted)?.let {
-                apiService.patchWebhookName(baseUrl, "dbx: $it")
-            }
+            apiService.uploadFile(baseUrl, "metadata.json", encrypted)?.let { apiService.patchWebhookName(baseUrl, "dbx: $it") }
         }
     }
 
@@ -176,11 +158,7 @@ class DisboxRepository(
         val normParent = parentPath.trim('/')
         val folderPath = (if (normParent.isEmpty()) name else "$normParent/$name") + "/.keep"
         val newFile = DisboxFile(UUID.randomUUID().toString(), folderPath, emptyList(), 0)
-        
-        // Save to Supabase Row
         apiService.upsertFile(identifier, newFile)
-        
-        // Update Local
         val files = getFileSystem(false).toMutableList()
         files.add(newFile)
         saveMetadataToLocal(files)
@@ -189,12 +167,41 @@ class DisboxRepository(
 
     suspend fun deletePaths(idsOrPaths: List<String>) = withContext(Dispatchers.IO) {
         val id = identifier
-        idsOrPaths.forEach { target ->
-            apiService.deleteFile(id, target.trim('/'))
-        }
-        
+        idsOrPaths.forEach { target -> apiService.deleteFile(id, target.trim('/')) }
         val files = getFileSystem(false).filterNot { f ->
             idsOrPaths.any { target -> f.id == target || f.path == target.trim('/') || f.path.startsWith("${target.trim('/')}/") }
+        }
+        saveMetadataToLocal(files)
+    }
+
+    suspend fun renamePath(oldPath: String, newName: String, id: String? = null): Boolean = withContext(Dispatchers.IO) {
+        val normOld = oldPath.trim('/')
+        val parts = normOld.split("/"); val parent = parts.dropLast(1).joinToString("/")
+        val normNew = if (parent.isEmpty()) newName else "$parent/$newName"
+        
+        apiService.deleteFile(identifier, normOld)
+        
+        val files = getFileSystem(false).map {
+            val updated = when {
+                (id != null && it.id == id) || it.path == normOld -> it.copy(path = normNew)
+                it.path.startsWith("$normOld/") -> it.copy(path = it.path.replaceFirst("$normOld/", "$normNew/"))
+                else -> it
+            }
+            if (updated.path != it.path) apiService.upsertFile(identifier, updated)
+            updated
+        }
+        saveMetadataToLocal(files)
+        true
+    }
+
+    suspend fun bulkSetStatus(idsOrPaths: Collection<String>, isLocked: Boolean? = null, isStarred: Boolean? = null) = withContext(Dispatchers.IO) {
+        val files = getFileSystem(false).map { f ->
+            var l = f.isLocked; var s = f.isStarred
+            val isTarget = idsOrPaths.any { t -> f.id == t || f.path == t.trim('/') || f.path.startsWith("${t.trim('/')}/") }
+            if (isTarget) { if (isLocked != null) l = isLocked; if (isStarred != null) s = isStarred }
+            val updated = f.copy(isLocked = l, isStarred = s)
+            if (updated != f) apiService.upsertFile(identifier, updated)
+            updated
         }
         saveMetadataToLocal(files)
     }
@@ -223,7 +230,6 @@ class DisboxRepository(
         }
         val newFile = DisboxFile(fileId, path, msgIds, size)
         apiService.upsertFile(identifier, newFile)
-        
         val files = getFileSystem(false).toMutableList()
         files.add(newFile)
         saveMetadataToLocal(files)
@@ -239,11 +245,40 @@ class DisboxRepository(
         return encryptionKey?.let { CryptoUtils.decrypt(data, it) } ?: data
     }
 
-    // --- OTHER HELPERS ---
     suspend fun verifyPin(pin: String): Boolean {
         val hash = hashedWebhook ?: return false
         val stored = settingsDao.getSetting(hash, "pin_hash")?.value ?: return false
         val hashed = MessageDigest.getInstance("SHA-256").digest(pin.toByteArray()).joinToString("") { "%02x".format(it) }
         return stored == hashed
+    }
+
+    suspend fun getShareSettings(): ShareSettings {
+        val hash = hashedWebhook ?: return ShareSettings("")
+        return shareSettingsDao.getSettings(hash)?.let { ShareSettings(it.hash, it.mode, it.cf_worker_url, it.cf_api_token, it.webhook_url, it.enabled == 1) }
+            ?: ShareSettings(hash, "public", "https://disbox-shared-link.naufal-backup.workers.dev", null, webhookUrl, false)
+    }
+
+    suspend fun getShareLinks(): List<ShareLink> {
+        val hash = hashedWebhook ?: return emptyList()
+        return shareLinkDao.getAllLinksByHash(hash).map { ShareLink(it.id, it.hash, it.file_path, it.file_id, it.token, it.permission, it.expires_at, it.created_at) }
+    }
+
+    suspend fun createShareLink(filePath: String, fileId: String?, permission: String, expiresAt: Long?): Map<String, Any> = withContext(Dispatchers.IO) {
+        try {
+            val hash = hashedWebhook ?: return@withContext mapOf("ok" to false)
+            val settings = getShareSettings()
+            val workerUrl = (settings.cf_worker_url ?: "https://disbox-shared-link.naufal-backup.workers.dev").trimEnd('/')
+            val token = UUID.randomUUID().toString().replace("-", "")
+            val file = if (fileId != null) fileDao.getFileById(fileId, hash) else fileDao.getFileByPath(filePath.trim('/'), hash)
+            val msgIdsRaw = gson.fromJson<List<MessageId>>(file?.messageIds ?: "[]", object : TypeToken<List<MessageId>>() {}.type)
+            val msgIds = msgIdsRaw.map { MessageIdRequest(it.msgId, it.index) }
+            val encKey = android.util.Base64.encodeToString(encryptionKey, android.util.Base64.NO_WRAP)
+            val request = ShareLinkRequest(token, fileId, filePath, permission, expiresAt, hash, msgIds, encKey, baseUrl)
+            apiService.createShareLink(workerUrl, "disbox-shared-link-0001", gson.toJson(request))?.let {
+                shareLinkDao.insertOrReplace(ShareLinkEntity(UUID.randomUUID().toString(), hash, filePath, fileId, token, permission, expiresAt, System.currentTimeMillis()))
+                return@withContext mapOf("ok" to true, "link" to "$workerUrl/share/$token")
+            }
+            mapOf("ok" to false)
+        } catch (e: Exception) { mapOf("ok" to false, "reason" to e.message) }
     }
 }

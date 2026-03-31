@@ -69,6 +69,10 @@ class DisboxViewModel(val app: Application) : AndroidViewModel(app) {
     var viewMode by mutableStateOf("grid")
     var sortMode by mutableStateOf("name")
     
+    // Sharing State
+    var shareLinks by mutableStateOf<List<ShareLink>>(emptyList())
+    var cfWorkerUrl by mutableStateOf("")
+    
     var savedWebhooks by mutableStateOf<List<String>>(emptyList())
     var isVerified by mutableStateOf(false)
 
@@ -150,6 +154,7 @@ class DisboxViewModel(val app: Application) : AndroidViewModel(app) {
                 isConnected = true
                 prefs.edit().putString("webhook", url).apply()
                 refresh()
+                loadShareLinks()
             } catch (e: Exception) { e.printStackTrace() } finally { isLoading = false }
         }
     }
@@ -237,6 +242,34 @@ class DisboxViewModel(val app: Application) : AndroidViewModel(app) {
         }
     }
 
+    // --- SHARING ---
+    fun loadShareLinks() {
+        viewModelScope.launch {
+            val settings = repository.getShareSettings()
+            shareEnabled = settings.enabled
+            cfWorkerUrl = settings.cf_worker_url ?: ""
+            shareLinks = repository.getShareLinks()
+        }
+    }
+
+    fun createShareLink(path: String, id: String?, permission: String, expiresAt: Long?, onResult: (Map<String, Any>) -> Unit) {
+        viewModelScope.launch {
+            val res = repository.createShareLink(path, id, permission, expiresAt)
+            loadShareLinks()
+            onResult(res)
+        }
+    }
+
+    fun revokeShareLink(id: String, token: String) {
+        // Mock revoke
+        viewModelScope.launch { loadShareLinks() }
+    }
+
+    fun revokeAllLinks() {
+        // Mock revoke all
+        viewModelScope.launch { loadShareLinks() }
+    }
+
     fun checkHasPin(onResult: (Boolean) -> Unit) {
         viewModelScope.launch { onResult(repository.verifyPin("")) }
     }
@@ -287,4 +320,5 @@ class DisboxViewModel(val app: Application) : AndroidViewModel(app) {
     fun unlockTo(items: Collection<String>, dest: String) {
         viewModelScope.launch { repository.bulkSetStatus(items.toSet(), isLocked = false); refresh() }
     }
+    fun exportCloudSaveAsZip(name: String, onResult: (File?) -> Unit) { }
 }
