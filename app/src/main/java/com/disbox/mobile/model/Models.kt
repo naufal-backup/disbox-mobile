@@ -15,7 +15,12 @@ data class DisboxFile(
     @SerializedName("size") val size: Long,
     @SerializedName("createdAt") val createdAt: Long = System.currentTimeMillis(),
     @SerializedName("isLocked") val isLocked: Boolean = false,
-    @SerializedName("isStarred") val isStarred: Boolean = false
+    @SerializedName("isStarred") val isStarred: Boolean = false,
+    @SerializedName("thumbnailMsgId") val thumbnailMsgId: String? = null,
+    
+    // UI Only (Not stored in JSON structure usually, but used for Optimistic UI)
+    @Transient var isOptimistic: Boolean = false,
+    @Transient var progress: Float = 0f
 )
 
 data class ShareLink(

@@ -44,24 +44,81 @@ class DisboxApiService {
         .registerTypeAdapter(MessageId::class.java, MessageIdAdapter())
         .create()
 
+    private val BASE_API_URL = "https://disbox-web-weld.vercel.app/api"
+
+    // --- AUTH API ---
+    suspend fun login(body: Map<String, Any>): Map<String, Any>? {
+        val json = gson.toJson(body).toRequestBody("application/json".toMediaTypeOrNull())
+        val request = Request.Builder().url("$BASE_API_URL/auth/login").post(json).build()
+        client.newCall(request).execute().use { response ->
+            if (response.isSuccessful) {
+                return gson.fromJson(response.body?.string(), object : TypeToken<Map<String, Any>>() {}.type)
+            }
+        }
+        return null
+    }
+
+    suspend fun register(body: Map<String, Any>): Map<String, Any>? {
+        val json = gson.toJson(body).toRequestBody("application/json".toMediaTypeOrNull())
+        val request = Request.Builder().url("$BASE_API_URL/auth/register").post(json).build()
+        client.newCall(request).execute().use { response ->
+            if (response.isSuccessful) {
+                return gson.fromJson(response.body?.string(), object : TypeToken<Map<String, Any>>() {}.type)
+            }
+        }
+        return null
+    }
+
+    // --- FILES API (DATABASE-FIRST) ---
+    suspend fun listFiles(identifier: String): Map<String, Any>? {
+        val request = Request.Builder().url("$BASE_API_URL/files/list?identifier=$identifier").build()
+        client.newCall(request).execute().use { response ->
+            if (response.isSuccessful) {
+                return gson.fromJson(response.body?.string(), object : TypeToken<Map<String, Any>>() {}.type)
+            }
+        }
+        return null
+    }
+
+    suspend fun syncAllFiles(identifier: String, files: List<FileItem>): Boolean {
+        val body = mapOf("identifier" to identifier, "files" to files)
+        val json = gson.toJson(body).toRequestBody("application/json".toMediaTypeOrNull())
+        val request = Request.Builder().url("$BASE_API_URL/files/sync-all").post(json).build()
+        client.newCall(request).execute().use { response -> return response.isSuccessful }
+    }
+
+    suspend fun upsertFile(identifier: String, file: FileItem): Boolean {
+        val body = mapOf("identifier" to identifier, "file" to file)
+        val json = gson.toJson(body).toRequestBody("application/json".toMediaTypeOrNull())
+        val request = Request.Builder().url("$BASE_API_URL/files/upsert").post(json).build()
+        client.newCall(request).execute().use { response -> return response.isSuccessful }
+    }
+
+    suspend fun deleteFile(identifier: String, path: String): Boolean {
+        val body = mapOf("identifier" to identifier, "path" to path)
+        val json = gson.toJson(body).toRequestBody("application/json".toMediaTypeOrNull())
+        val request = Request.Builder().url("$BASE_API_URL/files/delete").post(json).build()
+        client.newCall(request).execute().use { response -> return response.isSuccessful }
+    }
+
+    // --- CLOUD CONFIG ---
+    suspend fun getCloudConfig(identifier: String): Map<String, Any>? {
+        val request = Request.Builder().url("$BASE_API_URL/cloud/config?identifier=$identifier").build()
+        client.newCall(request).execute().use { response ->
+            if (response.isSuccessful) {
+                return gson.fromJson(response.body?.string(), object : TypeToken<Map<String, Any>>() {}.type)
+            }
+        }
+        return null
+    }
+
+    // --- LEGACY DISCORD / WEBHOOK API ---
     suspend fun getWebhookInfo(baseUrl: String): Map<String, Any>? {
         val request = Request.Builder().url(baseUrl).build()
         client.newCall(request).execute().use { response ->
             if (response.isSuccessful) {
                 val body = response.body?.string() ?: return null
                 return gson.fromJson(body, object : TypeToken<Map<String, Any>>() {}.type)
-            }
-        }
-        return null
-    }
-
-    suspend fun listMessages(baseUrl: String, limit: Int = 100): List<Map<String, Any>>? {
-        val url = if (baseUrl.endsWith("/")) "${baseUrl}messages?limit=$limit" else "$baseUrl/messages?limit=$limit"
-        val request = Request.Builder().url(url).build()
-        client.newCall(request).execute().use { response ->
-            if (response.isSuccessful) {
-                val body = response.body?.string() ?: return null
-                return gson.fromJson(body, object : TypeToken<List<Map<String, Any>>>() {}.type)
             }
         }
         return null
@@ -116,6 +173,7 @@ class DisboxApiService {
         }
     }
 
+    // --- SHARE API ---
     suspend fun createShareLink(workerUrl: String, apiKey: String, bodyJson: String): Map<String, Any>? {
         val body = bodyJson.toRequestBody("application/json".toMediaTypeOrNull())
         val request = Request.Builder()
@@ -131,30 +189,6 @@ class DisboxApiService {
             }
         }
         return null
-    }
-
-    suspend fun deleteShareLink(workerUrl: String, apiKey: String, token: String): Boolean {
-        val request = Request.Builder()
-            .url("$workerUrl/share/revoke/$token")
-            .delete()
-            .addHeader("X-Disbox-Key", apiKey)
-            .build()
-
-        client.newCall(request).execute().use { response ->
-            return response.isSuccessful
-        }
-    }
-
-    suspend fun deleteAllShareLinks(workerUrl: String, apiKey: String, hash: String): Boolean {
-        val request = Request.Builder()
-            .url("$workerUrl/share/revoke-all/$hash")
-            .delete()
-            .addHeader("X-Disbox-Key", apiKey)
-            .build()
-
-        client.newCall(request).execute().use { response ->
-            return response.isSuccessful
-        }
     }
 
     fun getGson(): Gson = gson

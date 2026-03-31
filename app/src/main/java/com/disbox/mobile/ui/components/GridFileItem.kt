@@ -28,7 +28,8 @@ fun GridFileItem(
     zoom: Float,
     viewModel: DisboxViewModel,
     onClick: () -> Unit,
-    onLongClick: () -> Unit
+    onLongClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     BaseFileItem(
         file = file,
@@ -41,7 +42,7 @@ fun GridFileItem(
         viewModel = viewModel,
         onClick = onClick,
         onLongClick = onLongClick,
-        modifier = Modifier.fillMaxWidth()
+        modifier = modifier.fillMaxWidth()
     ) { thumbSize ->
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,

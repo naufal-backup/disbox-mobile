@@ -27,7 +27,8 @@ fun ListFileItem(
     zoom: Float,
     viewModel: DisboxViewModel,
     onClick: () -> Unit,
-    onLongClick: () -> Unit
+    onLongClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     BaseFileItem(
         file = file,
@@ -40,33 +41,26 @@ fun ListFileItem(
         viewModel = viewModel,
         onClick = onClick,
         onLongClick = onLongClick,
-        modifier = Modifier.fillMaxWidth().height(64.dp * zoom).padding(horizontal = 12.dp, vertical = 2.dp)
+        modifier = modifier.fillMaxWidth()
     ) { thumbSize ->
         Row(
-            modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth().padding(12.dp)
         ) {
-            // Checkbox space if in selection mode handled by BaseFileItem overlays for now, 
-            // but for List we might want it inline. 
-            // Let's stick to the current design which has it inline.
-            if (isSelectionMode) {
-                Spacer(Modifier.width(30.dp)) // Reserve space for checkbox overlay
-            }
-            
             FileThumbnailWrapper(file, isFolder, isLocked, zoom, viewModel, thumbSize)
-            Spacer(modifier = Modifier.width(14.dp))
-            Column(Modifier.weight(1f)) {
+            Spacer(Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
                     name,
-                    fontWeight = FontWeight.SemiBold,
+                    fontWeight = FontWeight.Medium,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                    fontSize = 14.sp * zoom
+                    fontSize = 13.sp * zoom
                 )
                 Text(
                     if (isFolder) viewModel.t("folder") else formatSize(size),
-                    fontSize = 11.sp * zoom,
+                    fontSize = 10.sp * zoom,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
                 )
             }

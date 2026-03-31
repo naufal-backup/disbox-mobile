@@ -22,7 +22,6 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
     private val apiService = DisboxApiService()
     private val db = DisboxDatabase.getDatabase(application)
     val repository = DisboxRepository(application, apiService, db)
-    val api get() = repository
 
     // UseCases
     private val syncMetadataUseCase = SyncMetadataUseCase(repository)
@@ -32,112 +31,108 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
 
     // UI State
     var webhookUrl by mutableStateOf("")
+    var username by mutableStateOf("")
     var isConnected by mutableStateOf(false)
+    var isLoggedIn by mutableStateOf(false)
     var isLoading by mutableStateOf(false)
-    var allFiles by mutableStateOf<List<DisboxFile>>(emptyList())
+    var allFiles = mutableStateListOf<DisboxFile>()
     var currentPath by mutableStateOf("/")
     var activePage by mutableStateOf("drive")
-    var metadataStatus by mutableStateOf("synced")
+    
+    // Selection and Transfers
+    var selectionSet = mutableStateListOf<String>()
+    var moveCopyMode by mutableStateOf<String?>(null)
+    var moveCopyItems by mutableStateOf<Set<String>>(emptySet())
     
     // Settings
     var theme by mutableStateOf("dark")
     var language by mutableStateOf("en")
-    var accentColor by mutableStateOf("#5865F2")
-    var showPreviews by mutableStateOf(true)
-    var showRecent by mutableStateOf(true)
-    var cloudSaveEnabled by mutableStateOf(false)
-    var showImagePreviews by mutableStateOf(true)
-    var showVideoPreviews by mutableStateOf(true)
-    var showMusicPreviews by mutableStateOf(true)
     var zoomLevel by mutableStateOf(1.0f)
     var viewMode by mutableStateOf("grid")
-    var sortMode by mutableStateOf("name")
     
-    // Selection and Transfers
-    var selectionSet = mutableStateListOf<String>()
-    var transferProgress = mutableStateMapOf<String, Float>()
-    var moveCopyMode by mutableStateOf<String?>(null)
-    var moveCopyItems by mutableStateOf<Set<String>>(emptySet())
-    
-    // Sharing
-    var shareEnabled by mutableStateOf(false)
-    var shareLinks by mutableStateOf<List<ShareLink>>(emptyList())
-    var cfWorkerUrl by mutableStateOf("")
-    
-    // Player
-    var currentPlayingFile by mutableStateOf<DisboxFile?>(null)
-    var isPlaying by mutableStateOf(false)
-    var playbackProgress by mutableStateOf(0f)
-    var playbackPosition by mutableStateOf(0L)
-    var playbackDuration by mutableStateOf(0L)
-    var repeatMode by mutableStateOf(0)
-
-    // Auth
-    var savedWebhooks by mutableStateOf<List<String>>(emptyList())
-    var isVerified by mutableStateOf(false)
-
     private val prefs = application.getSharedPreferences("disbox_prefs", Context.MODE_PRIVATE)
 
     init {
         loadSettings()
-        loadSavedWebhooks()
+        // Cek login session
+        val savedUser = prefs.getString("username", null)
+        val savedWebhook = prefs.getString("webhook", null)
+        if (savedUser != null && savedWebhook != null) {
+            connect(savedWebhook, user = savedUser)
+        } else if (savedWebhook != null) {
+            connect(savedWebhook)
+        }
     }
 
     private fun loadSettings() {
         theme = prefs.getString("theme", "dark") ?: "dark"
         language = prefs.getString("language", "en") ?: "en"
-        accentColor = prefs.getString("accent_color", "#5865F2") ?: "#5865F2"
-        showPreviews = prefs.getBoolean("show_previews", true)
-        showRecent = prefs.getBoolean("show_recent", true)
-        cloudSaveEnabled = prefs.getBoolean("cloud_save_enabled", false)
-        showImagePreviews = prefs.getBoolean("show_image_previews", true)
-        showVideoPreviews = prefs.getBoolean("show_video_previews", true)
-        showMusicPreviews = prefs.getBoolean("show_music_previews", true)
         zoomLevel = prefs.getFloat("zoom_level", 1.0f)
         viewMode = prefs.getString("view_mode", "grid") ?: "grid"
-        sortMode = prefs.getString("sort_mode", "name") ?: "name"
-    }
-
-    private fun loadSavedWebhooks() {
-        savedWebhooks = prefs.getStringSet("webhooks", emptySet())?.toList() ?: emptyList()
     }
 
     fun t(key: String, args: Map<String, String> = emptyMap()) = I18n.t(language, key, args)
 
-    fun connect(url: String, forceId: String? = null) {
+    // --- AUTH ACTIONS ---
+
+    fun login(user: String, pass: String, onResult: (Boolean, String?) -> Unit) {
+        viewModelScope.launch {
+            isLoading = true
+            try {
+                val res = apiService.login(mapOf("username" to user, "password" to pass))
+                if (res != null && res["ok"] == true) {
+                    val wurl = res["webhook_url"] as String
+                    username = res["username"] as String
+                    isLoggedIn = true
+                    prefs.edit().putString("username", username).apply()
+                    connect(wurl, user = username)
+                    onResult(true, null)
+                } else {
+                    onResult(false, res?.get("error") as? String ?: "Login failed")
+                }
+            } catch (e: Exception) { onResult(false, e.message) }
+            finally { isLoading = false }
+        }
+    }
+
+    fun register(user: String, pass: String, wurl: String, metaUrl: String?, onResult: (Boolean, String?) -> Unit) {
+        viewModelScope.launch {
+            isLoading = true
+            try {
+                val body = mutableMapOf("username" to user, "password" to pass, "webhook_url" to wurl)
+                if (!metaUrl.isNullOrBlank()) body["metadata_url"] = metaUrl
+                val res = apiService.register(body)
+                if (res != null && res["ok"] == true) {
+                    onResult(true, null)
+                } else {
+                    onResult(false, res?.get("error") as? String ?: "Registration failed")
+                }
+            } catch (e: Exception) { onResult(false, e.message) }
+            finally { isLoading = false }
+        }
+    }
+
+    fun connect(url: String, forceId: String? = null, metadataUrl: String? = null, user: String? = null) {
         if (url.isBlank()) return
         viewModelScope.launch {
             isLoading = true
             try {
                 webhookUrl = url
-                repository.init(url, forceId)
+                repository.init(url, forceId, metadataUrl, user)
                 isConnected = true
-                saveWebhook(url)
+                prefs.edit().putString("webhook", url).apply()
                 refresh()
-                loadShareLinks()
             } catch (e: Exception) { e.printStackTrace() } finally { isLoading = false }
         }
     }
 
-    private fun saveWebhook(url: String) {
-        val set = prefs.getStringSet("webhooks", emptySet())?.toMutableSet() ?: mutableSetOf()
-        set.add(url)
-        prefs.edit().putStringSet("webhooks", set).apply()
-        loadSavedWebhooks()
-    }
-
-    fun removeWebhook(url: String) {
-        val set = prefs.getStringSet("webhooks", emptySet())?.toMutableSet() ?: mutableSetOf()
-        set.remove(url)
-        prefs.edit().putStringSet("webhooks", set).apply()
-        loadSavedWebhooks()
-    }
-
     fun disconnect() {
         isConnected = false
+        isLoggedIn = false
+        username = ""
         webhookUrl = ""
-        allFiles = emptyList()
-        isVerified = false
+        allFiles.clear()
+        prefs.edit().remove("username").remove("webhook").apply()
     }
 
     fun refresh() {
@@ -145,114 +140,82 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
             isLoading = true
             try {
                 syncMetadataUseCase()
-                allFiles = repository.getFileSystem()
+                val files = repository.getFileSystem()
+                allFiles.clear()
+                allFiles.addAll(files)
             } catch (e: Exception) { e.printStackTrace() } finally { isLoading = false }
         }
     }
 
-    fun navigate(path: String) { currentPath = path }
-    fun setPage(page: String) { activePage = page }
-    fun setView(mode: String) { viewMode = mode; prefs.edit().putString("view_mode", mode).apply() }
-    fun setZoom(level: Float) { zoomLevel = level; prefs.edit().putFloat("zoom_level", level).apply() }
-    fun updateSortMode(mode: String) { sortMode = mode; prefs.edit().putString("sort_mode", mode).apply() }
+    // --- OPTIMISTIC FILE OPERATIONS ---
 
     fun createFolder(name: String) {
-        viewModelScope.launch { fileOpsUseCase.createFolder(name, currentPath); refresh() }
+        val folderPath = (if (currentPath == "/") name else "${currentPath.trim('/')}/$name") + "/.keep"
+        val tempId = "temp-${System.currentTimeMillis()}"
+        val optFolder = DisboxFile(tempId, folderPath, emptyList(), 0, isOptimistic = true)
+        
+        allFiles.add(optFolder)
+        
+        viewModelScope.launch {
+            try {
+                repository.createFolder(name, currentPath)
+                // Update item optimistic jadi normal
+                val idx = allFiles.indexOfFirst { it.id == tempId }
+                if (idx >= 0) allFiles[idx] = allFiles[idx].copy(isOptimistic = false)
+                // Jalankan sinkronisasi awan di latar belakang
+                repository.persistCloud(allFiles.toList())
+            } catch (e: Exception) {
+                allFiles.removeIf { it.id == tempId } // Rollback
+            }
+        }
     }
 
     fun deletePaths(idsOrPaths: List<String>) {
-        viewModelScope.launch { fileOpsUseCase.deletePaths(idsOrPaths); clearSelection(); refresh() }
-    }
+        val backup = allFiles.toList()
+        allFiles.removeIf { f -> idsOrPaths.any { it == f.id || it == f.path || f.path.startsWith("$it/") } }
+        clearSelection()
 
-    fun renamePath(oldPath: String, newName: String, id: String? = null) {
-        viewModelScope.launch { fileOpsUseCase.renamePath(oldPath, newName, id); refresh() }
-    }
-
-    fun toggleSelection(idOrPath: String) {
-        if (selectionSet.contains(idOrPath)) selectionSet.remove(idOrPath)
-        else selectionSet.add(idOrPath)
-    }
-
-    fun clearSelection() { selectionSet.clear() }
-
-    fun toggleBulkStatus(idsOrPaths: Collection<String>, isLocked: Boolean? = null, isStarred: Boolean? = null) {
-        viewModelScope.launch { fileOpsUseCase.toggleStatus(idsOrPaths.toSet(), isLocked, isStarred); refresh() }
+        viewModelScope.launch {
+            try {
+                repository.deletePaths(idsOrPaths)
+                repository.persistCloud(allFiles.toList())
+            } catch (e: Exception) {
+                allFiles.clear()
+                allFiles.addAll(backup) // Rollback
+            }
+        }
     }
 
     fun uploadFiles(uris: List<Uri>) {
         viewModelScope.launch {
             uris.forEach { uri ->
-                val name = UUID.randomUUID().toString() 
-                transferProgress[name] = 0f
-                uploadFileUseCase(uri, currentPath.trim('/') + "/$name", 8 * 1024 * 1024) { transferProgress[name] = it }
+                val tempId = UUID.randomUUID().toString()
+                val fileName = FileUtils.getFileName(application, uri)
+                val path = if (currentPath == "/") fileName else "${currentPath.trim('/')}/$fileName"
+                
+                val optFile = DisboxFile(tempId, path, emptyList(), 0, isOptimistic = true, progress = 0f)
+                allFiles.add(optFile)
+
+                try {
+                    repository.uploadFile(uri, path, 7 * 1024 * 1024) { p ->
+                        val idx = allFiles.indexOfFirst { it.id == tempId }
+                        if (idx >= 0) allFiles[idx] = allFiles[idx].copy(progress = p)
+                    }
+                    val idx = allFiles.indexOfFirst { it.id == tempId }
+                    if (idx >= 0) allFiles[idx] = allFiles[idx].copy(isOptimistic = false)
+                    repository.persistCloud(allFiles.toList())
+                } catch (e: Exception) {
+                    allFiles.removeIf { it.id == tempId }
+                }
             }
-            refresh()
         }
     }
 
-    fun downloadFile(file: DisboxFile) {
-        viewModelScope.launch {
-            val dest = File(getApplication<Application>().getExternalFilesDir(null), file.path.split("/").last())
-            downloadFileUseCase(file, dest) { }
-        }
+    fun navigate(path: String) { currentPath = path }
+    fun setView(mode: String) { viewMode = mode; prefs.edit().putString("view_mode", mode).apply() }
+    fun toggleSelection(idOrPath: String) {
+        if (selectionSet.contains(idOrPath)) selectionSet.remove(idOrPath)
+        else selectionSet.add(idOrPath)
     }
-
-    fun loadShareLinks() {
-        viewModelScope.launch {
-            val settings = repository.getShareSettings()
-            shareEnabled = settings.enabled
-            cfWorkerUrl = settings.cf_worker_url ?: ""
-            shareLinks = repository.getShareLinks()
-        }
-    }
-
-    fun createShareLink(path: String, id: String?, permission: String, expiresAt: Long?, onResult: (Map<String, Any>) -> Unit) {
-        viewModelScope.launch {
-            val res = repository.createShareLink(path, id, permission, expiresAt)
-            loadShareLinks()
-            onResult(res)
-        }
-    }
-
-    fun revokeShareLink(id: String, token: String) {
-        viewModelScope.launch { loadShareLinks() }
-    }
-
-    fun revokeAllLinks() {
-        viewModelScope.launch { loadShareLinks() }
-    }
-
-    fun checkHasPin(onResult: (Boolean) -> Unit) {
-        viewModelScope.launch { onResult(repository.verifyPin("")) }
-    }
-
-    fun verifyPin(pin: String, onResult: (Boolean) -> Unit) {
-        viewModelScope.launch {
-            val res = repository.verifyPin(pin)
-            if (res) isVerified = true
-            onResult(res)
-        }
-    }
-
-    fun startMove(items: Collection<String>) { moveCopyMode = "move"; moveCopyItems = items.toSet() }
-    fun startCopy(items: Collection<String>) { moveCopyMode = "copy"; moveCopyItems = items.toSet() }
-    fun paste(dest: String) { 
-        viewModelScope.launch {
-            moveCopyItems.forEach { item -> if (moveCopyMode == "move") repository.renamePath(item, dest) }
-            moveCopyMode = null
-            moveCopyItems = emptySet()
-            refresh()
-        }
-    }
-    fun unlockTo(items: Collection<String>, dest: String) {
-        viewModelScope.launch { repository.bulkSetStatus(items.toSet(), isLocked = false); refresh() }
-    }
-    fun exportCloudSaveAsZip(name: String, onResult: (File?) -> Unit) { }
-    fun updateLanguage(code: String) { language = code; prefs.edit().putString("language", code).apply() }
-    fun updateAccentColor(hex: String) { accentColor = hex; prefs.edit().putString("accent_color", hex).apply() }
-    fun toggleTheme() { theme = if (theme == "dark") "light" else "dark"; prefs.edit().putString("theme", theme).apply() }
-    fun updatePreviews(v: Boolean) { showPreviews = v; prefs.edit().putBoolean("show_previews", v).apply() }
-    fun updateRecent(v: Boolean) { showRecent = v; prefs.edit().putBoolean("show_recent", v).apply() }
-    fun updateCloudSaveEnabled(v: Boolean) { cloudSaveEnabled = v; prefs.edit().putBoolean("cloud_save_enabled", v).apply() }
-    fun updateRepeatMode(m: Int) { repeatMode = m }
+    fun clearSelection() { selectionSet.clear() }
 }
