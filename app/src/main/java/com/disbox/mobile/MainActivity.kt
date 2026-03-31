@@ -11,7 +11,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.navigation.compose.NavHost
@@ -75,14 +74,14 @@ fun MainNavigation(viewModel: DisboxViewModel) {
                     tonalElevation = 8.dp
                 ) {
                     val items = mutableListOf(
-                        Triple(Screen.Drive.route, viewModel.t("drive"), Icons.Default.Cloud),
-                        Triple(Screen.Starred.route, viewModel.t("starred"), Icons.Default.Star)
+                        Triple(Screen.Drive.route, "Drive", Icons.Default.Cloud),
+                        Triple(Screen.Starred.route, "Starred", Icons.Default.Star)
                     )
-                    if (viewModel.showRecent) items.add(Triple(Screen.Recent.route, viewModel.t("recent"), Icons.Default.History))
-                    items.add(Triple(Screen.Locked.route, viewModel.t("locked"), Icons.Default.Lock))
-                    if (viewModel.cloudSaveEnabled) items.add(Triple(Screen.CloudSave.route, viewModel.t("cloud_save_nav"), Icons.Default.Backup))
-                    if (viewModel.shareEnabled) items.add(Triple(Screen.Shared.route, viewModel.t("shared"), Icons.Default.Link))
-                    items.add(Triple(Screen.Settings.route, viewModel.t("settings"), Icons.Default.Settings))
+                    if (viewModel.showRecent) items.add(Triple(Screen.Recent.route, "Recent", Icons.Default.History))
+                    items.add(Triple(Screen.Locked.route, "Locked", Icons.Default.Lock))
+                    if (viewModel.cloudSaveEnabled) items.add(Triple(Screen.CloudSave.route, "Cloud", Icons.Default.Backup))
+                    if (viewModel.shareEnabled) items.add(Triple(Screen.Shared.route, "Shared", Icons.Default.Link))
+                    items.add(Triple(Screen.Settings.route, "Settings", Icons.Default.Settings))
 
                     items.forEach { (route, label, icon) ->
                         NavigationBarItem(

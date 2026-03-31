@@ -19,6 +19,7 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -37,11 +38,6 @@ fun DriveScreen(viewModel: DisboxViewModel, isLockedView: Boolean = false, isSta
     var showCreateFolderDialog by remember { mutableStateOf(false) }
     var folderName by remember { mutableStateOf("") }
     var previewFile by remember { mutableStateOf<DisboxFile?>(null) }
-    var showDeleteConfirm by remember { mutableStateOf<List<String>?>(null) }
-    var showRenameDialog by remember { mutableStateOf(false) }
-    var newName by remember { mutableStateOf("") }
-    var itemToRename by remember { mutableStateOf<Pair<String, String?>?>(null) }
-    var pinPrompt by remember { mutableStateOf<(() -> Unit)?>(null) }
     
     val processed = remember(viewModel.allFiles.toList(), viewModel.currentPath, isLockedView, isStarredView, isRecentView, viewModel.sortMode) {
         val fileList = mutableListOf<DisboxFile>()
@@ -54,25 +50,17 @@ fun DriveScreen(viewModel: DisboxViewModel, isLockedView: Boolean = false, isSta
             val fDir = parts.dropLast(1).joinToString("/")
 
             if (name == ".keep") {
-                // Handle Folder logic
                 val currentAcc = f.path.removeSuffix("/.keep")
                 val parentPath = currentAcc.split("/").dropLast(1).joinToString("/")
                 val dirName = currentAcc.split("/").last()
-                
-                if (parentPath == dirPath) {
-                    folderList.add(dirName to currentAcc)
-                }
+                if (parentPath == dirPath) folderList.add(dirName to currentAcc)
             } else {
-                // Handle File logic
-                if (fDir == dirPath) {
-                    fileList.add(f)
-                }
+                if (fDir == dirPath) fileList.add(f)
             }
         }
         
         val sortedFolders = folderList.distinctBy { it.second }.sortedBy { it.first.lowercase() }
         val sortedFiles = fileList.sortedBy { it.path.lowercase() }
-        
         sortedFolders to sortedFiles
     }
     val folders = processed.first
@@ -177,5 +165,8 @@ fun DriveScreen(viewModel: DisboxViewModel, isLockedView: Boolean = false, isSta
         AlertDialog(onDismissRequest = { showCreateFolderDialog = false }, title = { Text("Folder Baru") }, text = { OutlinedTextField(folderName, { folderName = it }, label = { Text("Nama Folder") }) },
             confirmButton = { Button(onClick = { if (folderName.isNotBlank()) { viewModel.createFolder(folderName); folderName = ""; showCreateFolderDialog = false } }) { Text("Buat") } },
             dismissButton = { TextButton(onClick = { showCreateFolderDialog = false }) { Text("Batal") } })
+    }
+    if (previewFile != null) {
+        FilePreviewScreen(file = previewFile!!, allFiles = currentFiles, viewModel = viewModel, onFileChange = { previewFile = it }, onClose = { previewFile = null })
     }
 }

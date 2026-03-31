@@ -80,14 +80,14 @@ class DisboxApiService {
         return null
     }
 
-    suspend fun syncAllFiles(identifier: String, files: List<FileItem>): Boolean {
+    suspend fun syncAllFiles(identifier: String, files: List<DisboxFile>): Boolean {
         val body = mapOf("identifier" to identifier, "files" to files)
         val json = gson.toJson(body).toRequestBody("application/json".toMediaTypeOrNull())
         val request = Request.Builder().url("$BASE_API_URL/files/sync-all").post(json).build()
         client.newCall(request).execute().use { response -> return response.isSuccessful }
     }
 
-    suspend fun upsertFile(identifier: String, file: FileItem): Boolean {
+    suspend fun upsertFile(identifier: String, file: DisboxFile): Boolean {
         val body = mapOf("identifier" to identifier, "file" to file)
         val json = gson.toJson(body).toRequestBody("application/json".toMediaTypeOrNull())
         val request = Request.Builder().url("$BASE_API_URL/files/upsert").post(json).build()

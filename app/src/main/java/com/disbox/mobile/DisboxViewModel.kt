@@ -18,10 +18,10 @@ import kotlinx.coroutines.launch
 import java.io.File
 import java.util.UUID
 
-class DisboxViewModel(application: Application) : AndroidViewModel(application) {
+class DisboxViewModel(val app: Application) : AndroidViewModel(app) {
     private val apiService = DisboxApiService()
-    private val db = DisboxDatabase.getDatabase(application)
-    val repository = DisboxRepository(application, apiService, db)
+    private val db = DisboxDatabase.getDatabase(app)
+    val repository = DisboxRepository(app, apiService, db)
 
     // UseCases
     private val syncMetadataUseCase = SyncMetadataUseCase(repository)
@@ -38,19 +38,41 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
     var allFiles = mutableStateListOf<DisboxFile>()
     var currentPath by mutableStateOf("/")
     var activePage by mutableStateOf("drive")
+    var metadataStatus by mutableStateOf("synced")
     
     // Selection and Transfers
     var selectionSet = mutableStateListOf<String>()
+    var transferProgress = mutableStateMapOf<String, Float>()
     var moveCopyMode by mutableStateOf<String?>(null)
     var moveCopyItems by mutableStateOf<Set<String>>(emptySet())
     
+    // Player
+    var currentPlayingFile by mutableStateOf<DisboxFile?>(null)
+    var isPlaying by mutableStateOf(false)
+    var playbackProgress by mutableStateOf(0f)
+    var playbackPosition by mutableStateOf(0L)
+    var playbackDuration by mutableStateOf(0L)
+    var repeatMode by mutableStateOf(0)
+
     // Settings
     var theme by mutableStateOf("dark")
     var language by mutableStateOf("en")
+    var accentColor by mutableStateOf("#5865F2")
+    var showPreviews by mutableStateOf(true)
+    var showImagePreviews by mutableStateOf(true)
+    var showVideoPreviews by mutableStateOf(true)
+    var showMusicPreviews by mutableStateOf(true)
+    var showRecent by mutableStateOf(true)
+    var cloudSaveEnabled by mutableStateOf(false)
+    var shareEnabled by mutableStateOf(false)
     var zoomLevel by mutableStateOf(1.0f)
     var viewMode by mutableStateOf("grid")
+    var sortMode by mutableStateOf("name")
     
-    private val prefs = application.getSharedPreferences("disbox_prefs", Context.MODE_PRIVATE)
+    var savedWebhooks by mutableStateOf<List<String>>(emptyList())
+    var isVerified by mutableStateOf(false)
+
+    private val prefs = app.getSharedPreferences("disbox_prefs", Context.MODE_PRIVATE)
 
     init {
         loadSettings()
@@ -67,13 +89,19 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
     private fun loadSettings() {
         theme = prefs.getString("theme", "dark") ?: "dark"
         language = prefs.getString("language", "en") ?: "en"
+        accentColor = prefs.getString("accent_color", "#5865F2") ?: "#5865F2"
+        showPreviews = prefs.getBoolean("show_previews", true)
+        showRecent = prefs.getBoolean("show_recent", true)
+        cloudSaveEnabled = prefs.getBoolean("cloud_save_enabled", false)
+        showImagePreviews = prefs.getBoolean("show_image_previews", true)
+        showVideoPreviews = prefs.getBoolean("show_video_previews", true)
+        showMusicPreviews = prefs.getBoolean("show_music_previews", true)
         zoomLevel = prefs.getFloat("zoom_level", 1.0f)
         viewMode = prefs.getString("view_mode", "grid") ?: "grid"
+        sortMode = prefs.getString("sort_mode", "name") ?: "name"
     }
 
     fun t(key: String, args: Map<String, String> = emptyMap()) = I18n.t(language, key, args)
-
-    // --- AUTH ACTIONS ---
 
     fun login(user: String, pass: String, onResult: (Boolean, String?) -> Unit) {
         viewModelScope.launch {
@@ -147,25 +175,19 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    // --- OPTIMISTIC FILE OPERATIONS ---
-
     fun createFolder(name: String) {
         val folderPath = (if (currentPath == "/") name else "${currentPath.trim('/')}/$name") + "/.keep"
         val tempId = "temp-${System.currentTimeMillis()}"
         val optFolder = DisboxFile(tempId, folderPath, emptyList(), 0, isOptimistic = true)
-        
         allFiles.add(optFolder)
-        
         viewModelScope.launch {
             try {
                 repository.createFolder(name, currentPath)
-                // Update item optimistic jadi normal
                 val idx = allFiles.indexOfFirst { it.id == tempId }
                 if (idx >= 0) allFiles[idx] = allFiles[idx].copy(isOptimistic = false)
-                // Jalankan sinkronisasi awan di latar belakang
                 repository.persistCloud(allFiles.toList())
             } catch (e: Exception) {
-                allFiles.removeIf { it.id == tempId } // Rollback
+                allFiles.removeIf { it.id == tempId }
             }
         }
     }
@@ -174,14 +196,13 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
         val backup = allFiles.toList()
         allFiles.removeIf { f -> idsOrPaths.any { it == f.id || it == f.path || f.path.startsWith("$it/") } }
         clearSelection()
-
         viewModelScope.launch {
             try {
                 repository.deletePaths(idsOrPaths)
                 repository.persistCloud(allFiles.toList())
             } catch (e: Exception) {
                 allFiles.clear()
-                allFiles.addAll(backup) // Rollback
+                allFiles.addAll(backup)
             }
         }
     }
@@ -190,12 +211,10 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             uris.forEach { uri ->
                 val tempId = UUID.randomUUID().toString()
-                val fileName = FileUtils.getFileName(application, uri)
+                val fileName = FileUtils.getFileName(app, uri)
                 val path = if (currentPath == "/") fileName else "${currentPath.trim('/')}/$fileName"
-                
                 val optFile = DisboxFile(tempId, path, emptyList(), 0, isOptimistic = true, progress = 0f)
                 allFiles.add(optFile)
-
                 try {
                     repository.uploadFile(uri, path, 7 * 1024 * 1024) { p ->
                         val idx = allFiles.indexOfFirst { it.id == tempId }
@@ -211,11 +230,61 @@ class DisboxViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    fun downloadFile(file: DisboxFile) {
+        viewModelScope.launch {
+            val dest = File(app.getExternalFilesDir(null), file.path.split("/").last())
+            downloadFileUseCase(file, dest) { }
+        }
+    }
+
+    fun checkHasPin(onResult: (Boolean) -> Unit) {
+        viewModelScope.launch { onResult(repository.verifyPin("")) }
+    }
+
+    fun verifyPin(pin: String, onResult: (Boolean) -> Unit) {
+        viewModelScope.launch {
+            val res = repository.verifyPin(pin)
+            if (res) isVerified = true
+            onResult(res)
+        }
+    }
+
+    fun renamePath(oldPath: String, newName: String, id: String? = null) {
+        viewModelScope.launch { repository.renamePath(oldPath, newName, id); refresh() }
+    }
+
+    fun toggleBulkStatus(idsOrPaths: Collection<String>, isLocked: Boolean? = null, isStarred: Boolean? = null) {
+        viewModelScope.launch { repository.bulkSetStatus(idsOrPaths.toSet(), isLocked, isStarred); refresh() }
+    }
+
+    fun setPage(page: String) { activePage = page }
     fun navigate(path: String) { currentPath = path }
     fun setView(mode: String) { viewMode = mode; prefs.edit().putString("view_mode", mode).apply() }
+    fun setZoom(level: Float) { zoomLevel = level; prefs.edit().putFloat("zoom_level", level).apply() }
+    fun updateSortMode(mode: String) { sortMode = mode; prefs.edit().putString("sort_mode", mode).apply() }
     fun toggleSelection(idOrPath: String) {
         if (selectionSet.contains(idOrPath)) selectionSet.remove(idOrPath)
         else selectionSet.add(idOrPath)
     }
     fun clearSelection() { selectionSet.clear() }
+    fun updateLanguage(code: String) { language = code; prefs.edit().putString("language", code).apply() }
+    fun updateAccentColor(hex: String) { accentColor = hex; prefs.edit().putString("accent_color", hex).apply() }
+    fun toggleTheme() { theme = if (theme == "dark") "light" else "dark"; prefs.edit().putString("theme", theme).apply() }
+    fun updatePreviews(v: Boolean) { showPreviews = v; prefs.edit().putBoolean("show_previews", v).apply() }
+    fun updateRecent(v: Boolean) { showRecent = v; prefs.edit().putBoolean("show_recent", v).apply() }
+    fun updateCloudSaveEnabled(v: Boolean) { cloudSaveEnabled = v; prefs.edit().putBoolean("cloud_save_enabled", v).apply() }
+    fun updateRepeatMode(m: Int) { repeatMode = m }
+    fun startMove(items: Collection<String>) { moveCopyMode = "move"; moveCopyItems = items.toSet() }
+    fun startCopy(items: Collection<String>) { moveCopyMode = "copy"; moveCopyItems = items.toSet() }
+    fun paste(dest: String) { 
+        viewModelScope.launch {
+            moveCopyItems.forEach { item -> if (moveCopyMode == "move") repository.renamePath(item, dest) }
+            moveCopyMode = null
+            moveCopyItems = emptySet()
+            refresh()
+        }
+    }
+    fun unlockTo(items: Collection<String>, dest: String) {
+        viewModelScope.launch { repository.bulkSetStatus(items.toSet(), isLocked = false); refresh() }
+    }
 }

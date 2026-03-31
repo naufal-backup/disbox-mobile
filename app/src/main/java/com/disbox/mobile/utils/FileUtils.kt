@@ -3,6 +3,32 @@ package com.disbox.mobile.utils
 import android.content.Context
 import android.content.ContextWrapper
 import android.app.Activity
+import android.net.Uri
+import android.provider.OpenableColumns
+
+object FileUtils {
+    fun getFileName(context: Context, uri: Uri): String {
+        var result: String? = null
+        if (uri.scheme == "content") {
+            val cursor = context.contentResolver.query(uri, null, null, null, null)
+            try {
+                if (cursor != null && cursor.moveToFirst()) {
+                    result = cursor.getString(cursor.getColumnIndexOrThrow(OpenableColumns.DISPLAY_NAME))
+                }
+            } finally {
+                cursor?.close()
+            }
+        }
+        if (result == null) {
+            result = uri.path
+            val cut = result?.lastIndexOf('/') ?: -1
+            if (cut != -1) {
+                result = result?.substring(cut + 1)
+            }
+        }
+        return result ?: "unknown_file"
+    }
+}
 
 fun Context.findActivity(): Activity? {
     var context = this
