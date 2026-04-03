@@ -53,9 +53,7 @@ fun FilePreviewScreen(
     }
 
     val initialIndex = navigatableFiles.indexOfFirst { it.id == file.id }.coerceAtLeast(0)
-    val pagerState = rememberPagerState(initialPage = initialIndex) {
-        navigatableFiles.size
-    }
+    val pagerState = rememberPagerState(initialPage = initialIndex)
 
     LaunchedEffect(pagerState.currentPage) {
         if (navigatableFiles.isNotEmpty()) {
@@ -73,11 +71,11 @@ fun FilePreviewScreen(
     ) {
         Box(Modifier.fillMaxSize()) {
             HorizontalPager(
+                count = navigatableFiles.size,
                 state = pagerState,
                 modifier = Modifier.fillMaxSize(),
                 pageSpacing = 0.dp,
-                userScrollEnabled = true,
-                beyondBoundsPageCount = 0
+                userScrollEnabled = true
             ) { pageIndex ->
                 val currentFile = navigatableFiles[pageIndex]
                 val isActive = pagerState.currentPage == pageIndex
