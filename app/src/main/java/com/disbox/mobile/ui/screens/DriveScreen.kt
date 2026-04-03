@@ -39,32 +39,32 @@ fun DriveScreen(viewModel: DisboxViewModel, isLockedView: Boolean = false, isSta
     var folderName by remember { mutableStateOf("") }
     var previewFile by remember { mutableStateOf<DisboxFile?>(null) }
     
-    val processed = remember(viewModel.allFiles.toList(), viewModel.currentPath, isLockedView, isStarredView, isRecentView, viewModel.sortMode) { files: List<DisboxFile>, path: String, isL: Boolean, isS: Boolean, isR: Boolean, sort: String ->
+    val processed = remember(viewModel.allFiles.toList(), viewModel.currentPath, isLockedView, isStarredView, isRecentView, viewModel.sortMode) {
         val fileList = mutableListOf<DisboxFile>()
         val folderList = mutableListOf<Pair<String, String>>()
-        val dirPath = path.trim('/')
+        val dirPath = viewModel.currentPath.trim('/')
         
-        for (f in files) {
+        for (f in viewModel.allFiles) {
             val parts = f.path.split("/").filter { s -> s.isNotEmpty() }
             if (parts.isEmpty()) continue
             val name = parts.last()
             
-            // Filtering
-            if (isS && !f.isStarred) continue
-            if (isL && !f.isLocked) continue
-            if (!isL && f.isLocked && !isS) continue
+            // Special filtering for Starred/Locked/Recent views
+            if (isStarredView && !f.isStarred) continue
+            if (isLockedView && !f.isLocked) continue
+            if (!isLockedView && f.isLocked && !isStarredView) continue
 
             val fDir = parts.dropLast(1).joinToString("/")
 
             if (name == ".keep") {
-                if (isS || isR || isL) continue 
+                if (isStarredView || isRecentView || isLockedView) continue 
                 val currentAcc = f.path.removeSuffix("/.keep")
                 val pParts = currentAcc.split("/").filter { s -> s.isNotEmpty() }
                 val parentPath = pParts.dropLast(1).joinToString("/")
                 val dirName = pParts.lastOrNull() ?: ""
                 if (parentPath == dirPath) folderList.add(dirName to currentAcc)
             } else {
-                if (isS || isR || isL) {
+                if (isStarredView || isRecentView || isLockedView) {
                     fileList.add(f)
                 } else if (fDir == dirPath) {
                     fileList.add(f)
@@ -73,7 +73,7 @@ fun DriveScreen(viewModel: DisboxViewModel, isLockedView: Boolean = false, isSta
         }
         
         val sortedFolders = folderList.distinctBy { it.second }.sortedBy { it.first.lowercase() }
-        val sortedFiles = when(sort) {
+        val sortedFiles = when(viewModel.sortMode) {
             "date" -> fileList.sortedByDescending { it.createdAt }
             "size" -> fileList.sortedByDescending { it.size }
             else -> fileList.sortedBy { it.path.lowercase() }
