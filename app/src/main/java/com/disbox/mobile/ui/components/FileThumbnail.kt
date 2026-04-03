@@ -68,22 +68,25 @@ fun FileThumbnail(file: DisboxFile, viewModel: DisboxViewModel, modifier: Modifi
         }
         isLoading = true
         try {
-            viewModel.downloadFile(file)
-            if (targetFile.exists()) {
-                thumbFile = targetFile
-                if (isAudio) {
-                    val retriever = android.media.MediaMetadataRetriever()
-                    retriever.setDataSource(targetFile.absolutePath)
-                    val art = retriever.embeddedPicture
-                    if (art != null) {
-                        audioArt = android.graphics.BitmapFactory.decodeByteArray(art, 0, art.size)
+            viewModel.downloadFileToCache(file, targetFile) { success ->
+                if (success && targetFile.exists()) {
+                    thumbFile = targetFile
+                    if (isAudio) {
+                        try {
+                            val retriever = android.media.MediaMetadataRetriever()
+                            retriever.setDataSource(targetFile.absolutePath)
+                            val art = retriever.embeddedPicture
+                            if (art != null) {
+                                audioArt = android.graphics.BitmapFactory.decodeByteArray(art, 0, art.size)
+                            }
+                            retriever.release()
+                        } catch (e: Exception) { e.printStackTrace() }
                     }
-                    retriever.release()
                 }
+                isLoading = false
             }
         } catch (e: Exception) {
             e.printStackTrace()
-        } finally {
             isLoading = false
         }
     }
