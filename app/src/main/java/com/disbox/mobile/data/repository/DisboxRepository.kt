@@ -265,6 +265,8 @@ class DisboxRepository(
         @Suppress("UNCHECKED_CAST")
         val attachments = msg["attachments"] as? List<Map<String, Any>>
         val url = if (attachments != null && index < attachments.size) attachments[index]["url"] as? String else attachments?.firstOrNull()?.get("url") as? String
+        
+        // downloadAttachment in apiService is already proxied
         val data = apiService.downloadAttachment(url ?: return@withContext null) ?: return@withContext null
         return@withContext encryptionKey?.let { CryptoUtils.decrypt(data, it) } ?: data
     }

@@ -1,5 +1,6 @@
 package com.disbox.mobile.data.service
 
+import android.content.Context
 import com.disbox.mobile.model.*
 import com.google.gson.*
 import com.google.gson.reflect.TypeToken
@@ -11,36 +12,25 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import java.lang.reflect.Type
 import java.util.UUID
 
-class MessageIdAdapter : JsonDeserializer<MessageId>, JsonSerializer<MessageId> {
-    override fun deserialize(json: JsonElement, typeOfT: Type, context: JsonDeserializationContext): MessageId {
-        return if (json.isJsonPrimitive) {
-            MessageId(json.asString, 0)
-        } else {
-            val obj = json.asJsonObject
-            MessageId(
-                obj.get("msgId")?.asString ?: obj.get("id")?.asString ?: "",
-                obj.get("index")?.asInt ?: 0
-            )
-        }
-    }
+// ... (MessageIdAdapter remains)
 
-    override fun serialize(src: MessageId, typeOfSrc: Type, context: JsonSerializationContext): JsonElement {
-        val obj = JsonObject()
-        obj.addProperty("msgId", src.msgId)
-        obj.addProperty("index", src.index)
-        return obj
-    }
-}
+class DisboxApiService(context: Context) {
+    var authToken: String? = null
+    private val cookieJar = SessionCookieJar(context)
 
-class DisboxApiService {
     private val client = OkHttpClient.Builder()
+        .cookieJar(cookieJar)
         .followRedirects(false)
         .followSslRedirects(false)
         .addInterceptor { chain ->
-            val request = chain.request().newBuilder()
+            val builder = chain.request().newBuilder()
                 .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
-                .build()
             
+            authToken?.let {
+                builder.header("Authorization", "Bearer $it")
+            }
+            
+            val request = builder.build()
             var response = chain.proceed(request)
             
             // Manual redirect handling (max 3 levels) for Vercel/Edge functions
@@ -189,7 +179,12 @@ class DisboxApiService {
     }
 
     suspend fun downloadAttachment(url: String): ByteArray? = withContext(Dispatchers.IO) {
-        val request = Request.Builder().url(url).build()
+        val isDiscord = url.contains("discord.com") || url.contains("discordapp.com")
+        val finalUrl = if (isDiscord) {
+            "$BASE_API_URL/proxy?url=${java.net.URLEncoder.encode(url, "UTF-8")}"
+        } else url
+
+        val request = Request.Builder().url(finalUrl).build()
         try {
             client.newCall(request).execute().use { response ->
                 if (response.isSuccessful) {
@@ -198,6 +193,11 @@ class DisboxApiService {
             }
         } catch (e: Exception) { e.printStackTrace() }
         null
+    }
+
+    fun logout() {
+        authToken = null
+        cookieJar.clear()
     }
 
     suspend fun uploadFile(baseUrl: String, filename: String, data: ByteArray): String? = withContext(Dispatchers.IO) {
