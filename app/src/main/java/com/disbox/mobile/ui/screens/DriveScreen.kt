@@ -31,7 +31,7 @@ import com.disbox.mobile.utils.FileUtils
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DriveScreen(viewModel: DisboxViewModel, isLockedView: Boolean = false, isStarredView = false, isRecentView = false) {
+fun DriveScreen(viewModel: DisboxViewModel, isLockedView: Boolean = false, isStarredView: Boolean = false, isRecentView: Boolean = false) {
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
         if (uris.isNotEmpty()) viewModel.uploadFiles(uris)
     }
@@ -39,28 +39,45 @@ fun DriveScreen(viewModel: DisboxViewModel, isLockedView: Boolean = false, isSta
     var folderName by remember { mutableStateOf("") }
     var previewFile by remember { mutableStateOf<DisboxFile?>(null) }
     
-    val processed = remember(viewModel.allFiles.toList(), viewModel.currentPath, isLockedView, isStarredView, isRecentView, viewModel.sortMode) {
+    val processed = remember(viewModel.allFiles.toList(), viewModel.currentPath, isLockedView, isStarredView, isRecentView, viewModel.sortMode) { files: List<DisboxFile>, path: String, isL: Boolean, isS: Boolean, isR: Boolean, sort: String ->
         val fileList = mutableListOf<DisboxFile>()
         val folderList = mutableListOf<Pair<String, String>>()
-        val dirPath = viewModel.currentPath.trim('/')
+        val dirPath = path.trim('/')
         
-        viewModel.allFiles.forEach { f ->
-            val parts = f.path.split("/").filter { it.isNotEmpty() }
+        for (f in files) {
+            val parts = f.path.split("/").filter { s -> s.isNotEmpty() }
+            if (parts.isEmpty()) continue
             val name = parts.last()
+            
+            // Filtering
+            if (isS && !f.isStarred) continue
+            if (isL && !f.isLocked) continue
+            if (!isL && f.isLocked && !isS) continue
+
             val fDir = parts.dropLast(1).joinToString("/")
 
             if (name == ".keep") {
+                if (isS || isR || isL) continue 
                 val currentAcc = f.path.removeSuffix("/.keep")
-                val parentPath = currentAcc.split("/").dropLast(1).joinToString("/")
-                val dirName = currentAcc.split("/").last()
+                val pParts = currentAcc.split("/").filter { s -> s.isNotEmpty() }
+                val parentPath = pParts.dropLast(1).joinToString("/")
+                val dirName = pParts.lastOrNull() ?: ""
                 if (parentPath == dirPath) folderList.add(dirName to currentAcc)
             } else {
-                if (fDir == dirPath) fileList.add(f)
+                if (isS || isR || isL) {
+                    fileList.add(f)
+                } else if (fDir == dirPath) {
+                    fileList.add(f)
+                }
             }
         }
         
         val sortedFolders = folderList.distinctBy { it.second }.sortedBy { it.first.lowercase() }
-        val sortedFiles = fileList.sortedBy { it.path.lowercase() }
+        val sortedFiles = when(sort) {
+            "date" -> fileList.sortedByDescending { it.createdAt }
+            "size" -> fileList.sortedByDescending { it.size }
+            else -> fileList.sortedBy { it.path.lowercase() }
+        }
         sortedFolders to sortedFiles
     }
     val folders = processed.first
@@ -77,7 +94,17 @@ fun DriveScreen(viewModel: DisboxViewModel, isLockedView: Boolean = false, isSta
                         if (viewModel.selectionSet.isNotEmpty()) {
                             Text("${viewModel.selectionSet.size} terpilih", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                         } else {
-                            BreadcrumbBar(viewModel.currentPath) { viewModel.navigate(it) }
+                            val titleText = when {
+                                isStarredView -> viewModel.t("starred")
+                                isLockedView -> viewModel.t("locked")
+                                isRecentView -> viewModel.t("recent")
+                                else -> null
+                            }
+                            if (titleText != null) {
+                                Text(titleText, fontWeight = FontWeight.Bold, modifier = Modifier.padding(12.dp), color = MaterialTheme.colorScheme.primary)
+                            } else {
+                                BreadcrumbBar(viewModel.currentPath) { viewModel.navigate(it) }
+                            }
                         }
                     }
                     IconButton(onClick = { viewModel.setView(if (viewModel.viewMode == "grid") "list" else "grid") }) { 
@@ -102,7 +129,17 @@ fun DriveScreen(viewModel: DisboxViewModel, isLockedView: Boolean = false, isSta
             modifier = Modifier.padding(padding).fillMaxSize()
         ) {
             if (folders.isEmpty() && currentFiles.isEmpty()) {
-                Box(Modifier.fillMaxSize(), Alignment.Center) { Text("Folder ini kosong", color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)) }
+                Box(Modifier.fillMaxSize(), Alignment.Center) {
+                    if (viewModel.isLoading) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            CircularProgressIndicator(modifier = Modifier.size(32.dp))
+                            Spacer(Modifier.height(16.dp))
+                            Text(viewModel.t("status_syncing"), color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                        }
+                    } else {
+                        Text(viewModel.t("empty_folder"), color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f))
+                    }
+                }
             } else if (viewModel.viewMode == "grid") {
                 LazyVerticalGrid(columns = GridCells.Adaptive(minSize = (100.dp * viewModel.zoomLevel)), contentPadding = PaddingValues(12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(folders) { (name, path) -> 

@@ -206,8 +206,7 @@ class DisboxRepository(
         saveMetadataToLocal(files)
     }
 
-    suspend fun uploadFile(uri: android.net.Uri, path: String, chunkSize: Int, onProgress: (Float) -> Unit): List<String> = withContext(Dispatchers.IO) {
-        val fileId = UUID.randomUUID().toString()
+    suspend fun uploadFile(uri: android.net.Uri, path: String, chunkSize: Int, fileId: String, onProgress: (Float) -> Unit): List<String> = withContext(Dispatchers.IO) {
         val resolver = context.contentResolver
         var size = 0L; var name = "file"
         resolver.query(uri, null, null, null, null)?.use {
@@ -217,14 +216,35 @@ class DisboxRepository(
             }
         }
         val numChunks = Math.ceil(size.toDouble() / chunkSize).toInt().coerceAtLeast(1)
-        val msgIds = mutableListOf<MessageId>()
+        
+        // Resume logic
+        val resumePrefs = context.getSharedPreferences("disbox_resume", Context.MODE_PRIVATE)
+        val resumeKey = "resume_${hashedWebhook}_${fileId}"
+        val savedIdsJson = resumePrefs.getString(resumeKey, null)
+        val msgIds = if (savedIdsJson != null) {
+            gson.fromJson<MutableList<MessageId>>(savedIdsJson, object : TypeToken<MutableList<MessageId>>() {}.type)
+        } else {
+            mutableListOf<MessageId>()
+        }
+
         resolver.openInputStream(uri)?.use { stream ->
             val buffer = ByteArray(chunkSize)
             for (i in 0 until numChunks) {
+                // Skip already uploaded chunks
+                if (i < msgIds.size) {
+                    stream.skip(chunkSize.toLong())
+                    onProgress((i + 1).toFloat() / numChunks)
+                    continue
+                }
+
                 val read = stream.read(buffer)
                 if (read <= 0) break
                 val encrypted = encryptionKey?.let { CryptoUtils.encrypt(buffer.copyOf(read), it) } ?: buffer.copyOf(read)
-                apiService.uploadFile(baseUrl, "${fileId}_${name}.part$i", encrypted)?.let { msgIds.add(MessageId(it, 0)) }
+                apiService.uploadFile(baseUrl, "${fileId}_${name}.part$i", encrypted)?.let { 
+                    msgIds.add(MessageId(it, 0))
+                    // Save progress
+                    resumePrefs.edit().putString(resumeKey, gson.toJson(msgIds)).apply()
+                }
                 onProgress((i + 1).toFloat() / numChunks)
             }
         }
@@ -233,16 +253,20 @@ class DisboxRepository(
         val files = getFileSystem(false).toMutableList()
         files.add(newFile)
         saveMetadataToLocal(files)
+        
+        // Success: clear resume data
+        resumePrefs.edit().remove(resumeKey).apply()
+        
         msgIds.map { it.msgId }
     }
 
-    suspend fun downloadFileChunk(msgId: String, index: Int): ByteArray? {
-        val msg = apiService.getMessage(baseUrl, msgId) ?: return null
+    suspend fun downloadFileChunk(msgId: String, index: Int): ByteArray? = withContext(Dispatchers.IO) {
+        val msg = apiService.getMessage(baseUrl, msgId) ?: return@withContext null
         @Suppress("UNCHECKED_CAST")
         val attachments = msg["attachments"] as? List<Map<String, Any>>
         val url = if (attachments != null && index < attachments.size) attachments[index]["url"] as? String else attachments?.firstOrNull()?.get("url") as? String
-        val data = apiService.downloadAttachment(url ?: return null) ?: return null
-        return encryptionKey?.let { CryptoUtils.decrypt(data, it) } ?: data
+        val data = apiService.downloadAttachment(url ?: return@withContext null) ?: return@withContext null
+        return@withContext encryptionKey?.let { CryptoUtils.decrypt(data, it) } ?: data
     }
 
     suspend fun verifyPin(pin: String): Boolean {
@@ -265,7 +289,7 @@ class DisboxRepository(
 
     suspend fun createShareLink(filePath: String, fileId: String?, permission: String, expiresAt: Long?): Map<String, Any> = withContext(Dispatchers.IO) {
         try {
-            val hash = hashedWebhook ?: return@withContext mapOf("ok" to false)
+            val hash = hashedWebhook ?: return@withContext mapOf<String, Any>("ok" to false)
             val settings = getShareSettings()
             val workerUrl = (settings.cf_worker_url ?: "https://disbox-shared-link.naufal-backup.workers.dev").trimEnd('/')
             val token = UUID.randomUUID().toString().replace("-", "")
@@ -277,9 +301,9 @@ class DisboxRepository(
             val res = apiService.createShareLink(workerUrl, "disbox-shared-link-0001", gson.toJson(request))
             if (res != null && res["ok"] == true) {
                 shareLinkDao.insertOrReplace(ShareLinkEntity(UUID.randomUUID().toString(), hash, filePath, fileId, token, permission, expiresAt, System.currentTimeMillis()))
-                return@withContext mapOf("ok" to true, "link" to "$workerUrl/share/$token")
+                return@withContext mapOf<String, Any>("ok" to true, "link" to "$workerUrl/share/$token")
             }
-            mapOf("ok" to false)
-        } catch (e: Exception) { mapOf("ok" to false, "reason" to e.message) }
+            mapOf<String, Any>("ok" to false)
+        } catch (e: Exception) { mapOf<String, Any>("ok" to false, "reason" to e.message as Any) }
     }
 }
