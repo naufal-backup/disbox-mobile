@@ -44,14 +44,11 @@ fun FilePreviewScreen(
     onFileChange: (DisboxFile) -> Unit = {},
     onClose: () -> Unit
 ) {
-    val videoExts = listOf("mp4", "mkv", "mov", "avi", "webm")
-    val textExts = listOf("txt", "md", "json", "js", "py", "rs", "html", "css", "xml", "yml", "yaml", "sql", "sh", "env")
-
     val navigatableFiles = remember(allFiles) {
         allFiles.filter { f ->
             val name = f.path.split("/").last()
-            val fExt = name.split(".").last().lowercase()
-            isImageFile(name) || videoExts.contains(fExt) || textExts.contains(fExt) || isPdfFile(name)
+            isImageFile(name) || isVideoFile(name) || isAudioFile(name) || isPdfFile(name) || 
+            listOf("txt", "md", "json", "js", "py", "rs", "html", "css", "xml", "yml", "yaml", "sql", "sh", "env").contains(name.split(".").last().lowercase())
         }
     }
 
@@ -79,7 +76,8 @@ fun FilePreviewScreen(
                 state = pagerState,
                 modifier = Modifier.fillMaxSize(),
                 pageSpacing = 0.dp,
-                userScrollEnabled = true
+                userScrollEnabled = true,
+                beyondBoundsPageCount = 0
             ) { pageIndex ->
                 val currentFile = navigatableFiles[pageIndex]
                 val isActive = pagerState.currentPage == pageIndex
@@ -141,109 +139,128 @@ fun FilePreviewScreen(
 fun MediaPreviewItem(file: DisboxFile, viewModel: DisboxViewModel, isActive: Boolean) {
     val name = file.path.split("/").last()
     val context = LocalContext.current
-    var previewText by remember { mutableStateOf<String?>(null) }
-    var previewImageFile by remember { mutableStateOf<File?>(null) }
-    var previewPdfFile by remember { mutableStateOf<File?>(null) }
-    var previewVideoFile by remember { mutableStateOf<File?>(null) }
-    var isDownloadingPreview by remember { mutableStateOf(false) }
-    var errorMsg by remember { mutableStateOf<String?>(null) }
-    
-    val videoExts = listOf("mp4", "mkv", "mov", "avi", "webm")
-    val textExts = listOf("txt", "md", "json", "js", "py", "rs", "html", "css", "xml", "yml", "yaml", "sql", "sh", "env")
     val ext = name.split(".").last().lowercase()
+    
+    val isMedia = remember(ext) { isVideoFile(name) || isAudioFile(name) }
+    val isImage = remember(ext) { isImageFile(name) }
+    val isText = remember(ext) { listOf("txt", "md", "json", "js", "py", "rs", "html", "css", "xml", "yml", "yaml", "sql", "sh", "env").contains(ext) }
 
-    val exoPlayer = remember {
-        ExoPlayer.Builder(context).build()
-    }
+    var previewText by remember { mutableStateOf<String?>(null) }
+    var previewFileObject by remember { mutableStateOf<File?>(null) }
+    var isLoading by remember { mutableStateOf(false) }
+    var errorMsg by remember { mutableStateOf<String?>(null) }
 
-    DisposableEffect(exoPlayer) {
-        onDispose {
-            exoPlayer.release()
+    // Lazy initialization of ExoPlayer
+    var exoPlayer by remember { mutableStateOf<ExoPlayer?>(null) }
+
+    LaunchedEffect(isActive) {
+        if (isActive && isMedia && exoPlayer == null) {
+            exoPlayer = ExoPlayer.Builder(context).build()
+        } else if (!isActive && exoPlayer != null) {
+            exoPlayer?.release()
+            exoPlayer = null
         }
     }
 
-    LaunchedEffect(file.id, isActive) {
+    DisposableEffect(Unit) {
+        onDispose {
+            exoPlayer?.release()
+        }
+    }
+
+    LaunchedEffect(file.id, isActive, exoPlayer) {
         if (!isActive) return@LaunchedEffect
         
-        isDownloadingPreview = false
         errorMsg = null
-        previewImageFile = null
-        previewPdfFile = null
-        previewVideoFile = null
-        previewText = null
+        if (!isMedia) {
+            previewFileObject = null
+            previewText = null
+        }
 
         try {
-            val cacheKey = "session_prev_${file.id}"
-            val tempFile = File(context.cacheDir, cacheKey)
-            val isMedia = videoExts.contains(ext) || ext == "mp3" || ext == "wav" || ext == "flac" || ext == "ogg"
-
             if (isMedia) {
+                val player = exoPlayer ?: return@LaunchedEffect
                 val api = viewModel.repository
                 val dataSourceFactory = DiscordDataSourceFactory(api, file)
                 val mediaSource = androidx.media3.exoplayer.source.ProgressiveMediaSource.Factory(dataSourceFactory)
                     .createMediaSource(MediaItem.fromUri("disbox-stream://${file.id}.$ext"))
-                exoPlayer.setMediaSource(mediaSource)
-                exoPlayer.prepare()
-                exoPlayer.playWhenReady = true
-                previewVideoFile = File("stream")
-            } else {
+                player.setMediaSource(mediaSource)
+                player.prepare()
+                player.playWhenReady = true
+            } else if (isImage || isText) {
+                val cacheKey = "prev_${file.id}_${file.size}"
+                val tempFile = File(context.cacheDir, cacheKey)
+                
                 if (!tempFile.exists() || tempFile.length() == 0L) {
-                    isDownloadingPreview = true
-                    viewModel.downloadFile(file)
-                    isDownloadingPreview = false
-                }
-
-                if (tempFile.exists()) {
-                    when {
-                        isImageFile(name) -> { previewImageFile = tempFile }
-                        isPdfFile(name) -> { previewPdfFile = tempFile }
-                        textExts.contains(ext) -> { previewText = tempFile.readText() }
+                    isLoading = true
+                    viewModel.downloadFileToCache(file, tempFile) { success ->
+                        isLoading = false
+                        if (success) {
+                            if (isImage) previewFileObject = tempFile
+                            if (isText) previewText = tempFile.readText()
+                        } else {
+                            errorMsg = "Gagal mengunduh pratinjau"
+                        }
                     }
+                } else {
+                    if (isImage) previewFileObject = tempFile
+                    if (isText) previewText = tempFile.readText()
                 }
             }
         } catch (e: Exception) {
-            errorMsg = "Gagal memuat: ${e.message}"
-            isDownloadingPreview = false
+            errorMsg = "Error: ${e.message}"
+            isLoading = false
         }
     }
 
     Box(Modifier.fillMaxSize(), Alignment.Center) {
-        if (isDownloadingPreview) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                CircularProgressIndicator(color = Color.White)
-                Spacer(Modifier.height(16.dp))
-                Text("Mengunduh pratinjau...", fontSize = 12.sp, color = Color.White.copy(0.7f))
+        when {
+            isLoading -> {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    CircularProgressIndicator(color = Color.White)
+                    Spacer(Modifier.height(16.dp))
+                    Text("Mengunduh...", fontSize = 12.sp, color = Color.White.copy(0.7f))
+                }
             }
-        } else if (errorMsg != null) {
-            Text(errorMsg!!, color = MaterialTheme.colorScheme.error)
-        } else if (previewImageFile != null) {
-            AsyncImage(
-                model = ImageRequest.Builder(context).data(previewImageFile).build(),
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = androidx.compose.ui.layout.ContentScale.Fit
-            )
-        } else if (previewVideoFile != null) {
-            VideoPlayer(exoPlayer, isFullscreen = true)
-        } else if (previewText != null) {
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
-                    .background(Color.White)
-                    .padding(16.dp)
-            ) {
-                Text(
-                    previewText!!,
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 12.sp,
-                    color = Color.Black
+            errorMsg != null -> {
+                Text(errorMsg!!, color = Color.Red, modifier = Modifier.padding(16.dp))
+            }
+            isMedia && exoPlayer != null -> {
+                VideoPlayer(exoPlayer!!, isFullscreen = true)
+            }
+            isImage && previewFileObject != null -> {
+                AsyncImage(
+                    model = ImageRequest.Builder(context)
+                        .data(previewFileObject)
+                        .crossfade(true)
+                        .build(),
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = androidx.compose.ui.layout.ContentScale.Fit
                 )
             }
-        } else {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(getFileIcon(name), fontSize = 64.sp)
-                Text("Pratinjau tidak tersedia", color = Color.White.copy(alpha = 0.6f))
+            isText && previewText != null -> {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .background(Color(0xFF1E1E1E))
+                        .verticalScroll(rememberScrollState())
+                        .padding(16.dp)
+                ) {
+                    Text(
+                        previewText!!,
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 12.sp,
+                        color = Color.LightGray
+                    )
+                }
+            }
+            else -> {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(getFileIcon(name), fontSize = 64.sp)
+                    Spacer(Modifier.height(8.dp))
+                    Text("Pratinjau tidak tersedia", color = Color.White.copy(alpha = 0.6f))
+                }
             }
         }
     }

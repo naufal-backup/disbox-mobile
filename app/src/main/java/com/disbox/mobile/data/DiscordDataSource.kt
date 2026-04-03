@@ -77,7 +77,15 @@ class DiscordDataSource(
 
     private fun fetchChunk(index: Int): ByteArray {
         if (index == cachedChunkIndex && cachedChunkData != null) return cachedChunkData!!
-        val data = runBlocking { repository.downloadFileChunk(file.messageIds[index].msgId, file.messageIds[index].index) } ?: throw Exception("Chunk download failed")
+        val data = try {
+            kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) { 
+                repository.downloadFileChunk(file.messageIds[index].msgId, file.messageIds[index].index) 
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        } ?: throw Exception("Chunk download failed")
+        
         cachedChunkIndex = index
         cachedChunkData = data
         return data
