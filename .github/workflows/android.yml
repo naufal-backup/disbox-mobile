@@ -53,10 +53,18 @@ jobs:
         name: release-apk
         path: app/build/outputs/apk/release/*.apk
 
+    - name: Cleanup Previous Latest Release
+      run: |
+        gh release delete latest --yes || true
+        git push origin :refs/tags/latest || true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
     - name: Create Release
       uses: softprops/action-gh-release@v2
       with:
-        tag_name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'latest' }}
+        tag_name: latest
+        name: latest
         files: app/build/outputs/apk/release/*.apk
         generate_release_notes: true
         prerelease: false

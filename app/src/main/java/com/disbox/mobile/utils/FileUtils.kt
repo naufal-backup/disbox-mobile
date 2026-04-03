@@ -28,6 +28,21 @@ object FileUtils {
         }
         return result ?: "unknown_file"
     }
+
+    fun getFileSize(context: Context, uri: Uri): Long {
+        var size = 0L
+        if (uri.scheme == "content") {
+            val cursor = context.contentResolver.query(uri, null, null, null, null)
+            try {
+                if (cursor != null && cursor.moveToFirst()) {
+                    size = cursor.getLong(cursor.getColumnIndexOrThrow(OpenableColumns.SIZE))
+                }
+            } finally {
+                cursor?.close()
+            }
+        }
+        return size
+    }
 }
 
 fun Context.findActivity(): Activity? {

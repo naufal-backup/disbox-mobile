@@ -84,6 +84,8 @@ class DisboxViewModel(val app: Application) : AndroidViewModel(app) {
         val savedUser = prefs.getString("username", null)
         val savedWebhook = prefs.getString("webhook", null)
         if (savedUser != null && savedWebhook != null) {
+            isLoggedIn = true
+            username = savedUser
             connect(savedWebhook, user = savedUser)
         } else if (savedWebhook != null) {
             connect(savedWebhook)
@@ -112,17 +114,27 @@ class DisboxViewModel(val app: Application) : AndroidViewModel(app) {
             isLoading = true
             try {
                 val res = apiService.login(mapOf("username" to user, "password" to pass))
-                if (res != null && res["ok"] == true) {
-                    val wurl = res["webhook_url"] as String
-                    username = res["username"] as String
+                val isOk = res?.get("ok")?.toString() == "true"
+                if (isOk) {
+                    val wurl = res?.get("webhook_url")?.toString() ?: ""
+                    username = res?.get("username")?.toString() ?: ""
                     isLoggedIn = true
                     prefs.edit().putString("username", username).apply()
-                    connect(wurl, user = username)
+                    webhookUrl = wurl
+                    repository.init(wurl, user = username)
+                    isConnected = true
+                    prefs.edit().putString("webhook", wurl).apply()
+                    refresh()
+                    loadShareLinks()
                     onResult(true, null)
                 } else {
-                    onResult(false, res?.get("error") as? String ?: "Login failed")
+                    val errorMsg = res?.get("error")?.toString() ?: res?.get("message")?.toString() ?: "Login failed"
+                    onResult(false, errorMsg)
                 }
-            } catch (e: Exception) { onResult(false, e.message) }
+            } catch (e: Exception) { 
+                e.printStackTrace()
+                onResult(false, "Network error: ${e.message}") 
+            }
             finally { isLoading = false }
         }
     }
@@ -134,12 +146,39 @@ class DisboxViewModel(val app: Application) : AndroidViewModel(app) {
                 val body = mutableMapOf("username" to user, "password" to pass, "webhook_url" to wurl)
                 if (!metaUrl.isNullOrBlank()) body["metadata_url"] = metaUrl
                 val res = apiService.register(body)
-                if (res != null && res["ok"] == true) {
+                val isOk = res?.get("ok")?.toString() == "true"
+                if (isOk) {
                     onResult(true, null)
                 } else {
-                    onResult(false, res?.get("error") as? String ?: "Registration failed")
+                    val errorMsg = res?.get("error")?.toString() ?: res?.get("message")?.toString() ?: "Registration failed"
+                    onResult(false, errorMsg)
                 }
-            } catch (e: Exception) { onResult(false, e.message) }
+            } catch (e: Exception) { 
+                e.printStackTrace()
+                onResult(false, "Network error: ${e.message}") 
+            }
+            finally { isLoading = false }
+        }
+    }
+
+    fun connectWithVerify(url: String, onResult: (Boolean, String?) -> Unit) {
+        if (url.isBlank()) return
+        viewModelScope.launch {
+            isLoading = true
+            try {
+                val res = apiService.verifyWebhook(url)
+                val isOk = res?.get("ok")?.toString() == "true"
+                if (isOk) {
+                    connect(url)
+                    onResult(true, null)
+                } else {
+                    val errorMsg = res?.get("error")?.toString() ?: res?.get("message")?.toString() ?: "Verification failed"
+                    onResult(false, errorMsg)
+                }
+            } catch (e: Exception) { 
+                e.printStackTrace()
+                onResult(false, "Network error: ${e.message}") 
+            }
             finally { isLoading = false }
         }
     }
@@ -150,12 +189,17 @@ class DisboxViewModel(val app: Application) : AndroidViewModel(app) {
             isLoading = true
             try {
                 webhookUrl = url
+                username = user ?: ""
                 repository.init(url, forceId, metadataUrl, user)
                 isConnected = true
                 prefs.edit().putString("webhook", url).apply()
+                if (user != null) prefs.edit().putString("username", user).apply()
                 refresh()
                 loadShareLinks()
-            } catch (e: Exception) { e.printStackTrace() } finally { isLoading = false }
+            } catch (e: Exception) { 
+                e.printStackTrace()
+                isConnected = false
+            } finally { isLoading = false }
         }
     }
 
@@ -215,21 +259,26 @@ class DisboxViewModel(val app: Application) : AndroidViewModel(app) {
     fun uploadFiles(uris: List<Uri>) {
         viewModelScope.launch {
             uris.forEach { uri ->
-                val tempId = UUID.randomUUID().toString()
                 val fileName = FileUtils.getFileName(app, uri)
+                val fileSize = FileUtils.getFileSize(app, uri)
+                // Deterministic fileId for resume
+                val b64Name = android.util.Base64.encodeToString(fileName.toByteArray(), android.util.Base64.NO_WRAP).replace("=", "")
+                val fileId = "res_${b64Name}_${fileSize}"
+                
                 val path = if (currentPath == "/") fileName else "${currentPath.trim('/')}/$fileName"
-                val optFile = DisboxFile(tempId, path, emptyList(), 0, isOptimistic = true, progress = 0f)
+                val optFile = DisboxFile(fileId, path, emptyList(), fileSize, isOptimistic = true, progress = 0f)
                 allFiles.add(optFile)
+                
                 try {
-                    repository.uploadFile(uri, path, 7 * 1024 * 1024) { p ->
-                        val idx = allFiles.indexOfFirst { it.id == tempId }
+                    uploadFileUseCase(uri, path, 7 * 1024 * 1024, fileId) { p ->
+                        val idx = allFiles.indexOfFirst { it.id == fileId }
                         if (idx >= 0) allFiles[idx] = allFiles[idx].copy(progress = p)
                     }
-                    val idx = allFiles.indexOfFirst { it.id == tempId }
+                    val idx = allFiles.indexOfFirst { it.id == fileId }
                     if (idx >= 0) allFiles[idx] = allFiles[idx].copy(isOptimistic = false)
                     repository.persistCloud(allFiles.toList())
                 } catch (e: Exception) {
-                    allFiles.removeIf { it.id == tempId }
+                    allFiles.removeIf { it.id == fileId }
                 }
             }
         }
@@ -239,6 +288,17 @@ class DisboxViewModel(val app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             val dest = File(app.getExternalFilesDir(null), file.path.split("/").last())
             downloadFileUseCase(file, dest) { }
+        }
+    }
+
+    fun downloadFileToCache(file: DisboxFile, dest: File, onResult: (Boolean) -> Unit) {
+        viewModelScope.launch {
+            try {
+                downloadFileUseCase(file, dest) { }
+                onResult(true)
+            } catch (e: Exception) {
+                onResult(false)
+            }
         }
     }
 
