@@ -4,6 +4,7 @@ import android.content.Context
 import okhttp3.Cookie
 import okhttp3.CookieJar
 import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrl
 
 class SessionCookieJar(context: Context) : CookieJar {
     private val prefs = context.getSharedPreferences("disbox_cookies", Context.MODE_PRIVATE)
@@ -15,7 +16,7 @@ class SessionCookieJar(context: Context) : CookieJar {
             if (cookiesJson is String) {
                 try {
                     val cookiesList = cookiesJson.split("|").mapNotNull { 
-                        Cookie.parse(HttpUrl.get("https://$host"), it) 
+                        Cookie.parse("https://$host".toHttpUrl(), it) 
                     }
                     cookiesMap[host] = cookiesList.toMutableList()
                 } catch (e: Exception) { e.printStackTrace() }

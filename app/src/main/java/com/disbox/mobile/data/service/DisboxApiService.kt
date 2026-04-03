@@ -12,7 +12,26 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import java.lang.reflect.Type
 import java.util.UUID
 
-// ... (MessageIdAdapter remains)
+class MessageIdAdapter : JsonDeserializer<MessageId>, JsonSerializer<MessageId> {
+    override fun deserialize(json: JsonElement, typeOfT: Type, context: JsonDeserializationContext): MessageId {
+        return if (json.isJsonPrimitive) {
+            MessageId(json.asString, 0)
+        } else {
+            val obj = json.asJsonObject
+            MessageId(
+                obj.get("msgId")?.asString ?: obj.get("id")?.asString ?: "",
+                obj.get("index")?.asInt ?: 0
+            )
+        }
+    }
+
+    override fun serialize(src: MessageId, typeOfSrc: Type, context: JsonSerializationContext): JsonElement {
+        val obj = JsonObject()
+        obj.addProperty("msgId", src.msgId)
+        obj.addProperty("index", src.index)
+        return obj
+    }
+}
 
 class DisboxApiService(context: Context) {
     var authToken: String? = null
