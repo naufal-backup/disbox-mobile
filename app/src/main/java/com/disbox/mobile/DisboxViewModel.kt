@@ -23,7 +23,58 @@ class DisboxViewModel(val app: Application) : AndroidViewModel(app) {
     private val db = DisboxDatabase.getDatabase(app)
     val repository = DisboxRepository(app, apiService, db)
 
-    // ... (rest of class fields)
+    // UseCases
+    private val syncMetadataUseCase = SyncMetadataUseCase(repository)
+    private val uploadFileUseCase = UploadFileUseCase(repository)
+    private val downloadFileUseCase = DownloadFileUseCase(repository)
+    private val fileOpsUseCase = FileOperationsUseCase(repository)
+
+    // UI State
+    var webhookUrl by mutableStateOf("")
+    var username by mutableStateOf("")
+    var isConnected by mutableStateOf(false)
+    var isLoggedIn by mutableStateOf(false)
+    var isLoading by mutableStateOf(false)
+    var allFiles = mutableStateListOf<DisboxFile>()
+    var currentPath by mutableStateOf("/")
+    var activePage by mutableStateOf("drive")
+    var metadataStatus by mutableStateOf("synced")
+    
+    // Selection and Transfers
+    var selectionSet = mutableStateListOf<String>()
+    var transferProgress = mutableStateMapOf<String, Float>()
+    var moveCopyMode by mutableStateOf<String?>(null)
+    var moveCopyItems by mutableStateOf<Set<String>>(emptySet())
+    
+    // Player
+    var currentPlayingFile by mutableStateOf<DisboxFile?>(null)
+    var isPlaying by mutableStateOf(false)
+    var playbackProgress by mutableStateOf(0f)
+    var playbackPosition by mutableStateOf(0L)
+    var playbackDuration by mutableStateOf(0L)
+    var repeatMode by mutableStateOf(0)
+
+    // Settings
+    var theme by mutableStateOf("dark")
+    var language by mutableStateOf("en")
+    var accentColor by mutableStateOf("#5865F2")
+    var showPreviews by mutableStateOf(true)
+    var showImagePreviews by mutableStateOf(true)
+    var showVideoPreviews by mutableStateOf(true)
+    var showMusicPreviews by mutableStateOf(true)
+    var showRecent by mutableStateOf(true)
+    var cloudSaveEnabled by mutableStateOf(false)
+    var shareEnabled by mutableStateOf(false)
+    var zoomLevel by mutableStateOf(1.0f)
+    var viewMode by mutableStateOf("grid")
+    var sortMode by mutableStateOf("name")
+    
+    // Sharing State
+    var shareLinks by mutableStateOf<List<ShareLink>>(emptyList())
+    var cfWorkerUrl by mutableStateOf("")
+    
+    var savedWebhooks by mutableStateOf<List<String>>(emptyList())
+    var isVerified by mutableStateOf(false)
 
     private val prefs = app.getSharedPreferences("disbox_prefs", Context.MODE_PRIVATE)
 
@@ -43,7 +94,22 @@ class DisboxViewModel(val app: Application) : AndroidViewModel(app) {
         }
     }
 
-    // ... loadSettings remains same
+    private fun loadSettings() {
+        theme = prefs.getString("theme", "dark") ?: "dark"
+        language = prefs.getString("language", "en") ?: "en"
+        accentColor = prefs.getString("accent_color", "#5865F2") ?: "#5865F2"
+        showPreviews = prefs.getBoolean("show_previews", true)
+        showRecent = prefs.getBoolean("show_recent", true)
+        cloudSaveEnabled = prefs.getBoolean("cloud_save_enabled", false)
+        showImagePreviews = prefs.getBoolean("show_image_previews", true)
+        showVideoPreviews = prefs.getBoolean("show_video_previews", true)
+        showMusicPreviews = prefs.getBoolean("show_music_previews", true)
+        zoomLevel = prefs.getFloat("zoom_level", 1.0f)
+        viewMode = prefs.getString("view_mode", "grid") ?: "grid"
+        sortMode = prefs.getString("sort_mode", "name") ?: "name"
+    }
+
+    fun t(key: String, args: Map<String, String> = emptyMap()) = I18n.t(language, key, args)
 
     fun login(user: String, pass: String, onResult: (Boolean, String?) -> Unit) {
         viewModelScope.launch {
@@ -80,6 +146,28 @@ class DisboxViewModel(val app: Application) : AndroidViewModel(app) {
         }
     }
 
+    fun register(user: String, pass: String, wurl: String, metaUrl: String?, onResult: (Boolean, String?) -> Unit) {
+        viewModelScope.launch {
+            isLoading = true
+            try {
+                val body = mutableMapOf("username" to user, "password" to pass, "webhook_url" to wurl)
+                if (!metaUrl.isNullOrBlank()) body["metadata_url"] = metaUrl
+                val res = apiService.register(body)
+                val isOk = res?.get("ok")?.toString() == "true"
+                if (isOk) {
+                    onResult(true, null)
+                } else {
+                    val errorMsg = res?.get("error")?.toString() ?: res?.get("message")?.toString() ?: "Registration failed"
+                    onResult(false, errorMsg)
+                }
+            } catch (e: Exception) { 
+                e.printStackTrace()
+                onResult(false, "Network error: ${e.message}") 
+            }
+            finally { isLoading = false }
+        }
+    }
+
     fun connectWithVerify(url: String, onResult: (Boolean, String?) -> Unit) {
         if (url.isBlank()) return
         viewModelScope.launch {
@@ -103,6 +191,26 @@ class DisboxViewModel(val app: Application) : AndroidViewModel(app) {
                 onResult(false, "Network error: ${e.message}") 
             }
             finally { isLoading = false }
+        }
+    }
+
+    fun connect(url: String, forceId: String? = null, metadataUrl: String? = null, user: String? = null) {
+        if (url.isBlank()) return
+        viewModelScope.launch {
+            isLoading = true
+            try {
+                webhookUrl = url
+                username = user ?: ""
+                repository.init(url, forceId, metadataUrl, user)
+                isConnected = true
+                prefs.edit().putString("webhook", url).apply()
+                if (user != null) prefs.edit().putString("username", user).apply()
+                refresh()
+                loadShareLinks()
+            } catch (e: Exception) { 
+                e.printStackTrace()
+                isConnected = false
+            } finally { isLoading = false }
         }
     }
 
