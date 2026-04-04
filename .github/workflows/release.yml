@@ -21,10 +21,10 @@ jobs:
           cache: gradle
 
       - name: Grant execute permission for gradlew
-        run: chmod +x disbox-mobile/gradlew
+        run: chmod +x gradlew
 
       - name: Build with Gradle
-        run: cd disbox-mobile && ./gradlew assembleRelease bundleRelease
+        run: ./gradlew assembleRelease bundleRelease
 
       - name: Create Release
         id: create_release
@@ -32,8 +32,8 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         with:
           files: |
-            disbox-mobile/app/build/outputs/apk/release/app-release.apk
-            disbox-mobile/app/build/outputs/bundle/release/app-release.aab
+            app/build/outputs/apk/release/app-release.apk
+            app/build/outputs/bundle/release/app-release.aab
           draft: false
           prerelease: false
         env:
