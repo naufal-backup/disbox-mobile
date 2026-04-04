@@ -55,6 +55,7 @@ export function AppProvider({ children }) {
   const [appLockEnabled, setAppLockEnabled] = useState(() => localStorage.getItem('disbox_app_lock_enabled') === 'true');
   const [appLockPin, setAppLockPin] = useState(() => localStorage.getItem('disbox_app_lock_pin') || '');
   const [isAppUnlocked, setIsAppUnlocked] = useState(false);
+  const [hideSyncOverlay, setHideSyncOverlay] = useState(() => localStorage.getItem('disbox_hide_sync_overlay') === 'true');
   const [cloudSaveEnabled, setCloudSaveEnabled] = useState(false);
   const [cloudSaves, setCloudSaves] = useState([]);
   const [shareEnabled, setShareEnabled] = useState(() => localStorage.getItem('disbox_share_enabled') !== 'false');
@@ -276,15 +277,19 @@ export function AppProvider({ children }) {
       const instance = new DisboxAPI(url);
       
       if (!isCloudAccount) {
-        const authRes = await fetch('https://disbox-web-weld.vercel.app/api/auth/webhook', {
-          method: 'POST',
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ webhook_url: url.trim() })
-        });
-        if (!authRes.ok) {
-          const err = await authRes.json();
-          throw new Error(err.error || 'Gagal membuat sesi API');
+        try {
+          const authRes = await fetch('https://disbox-web-weld.vercel.app/api/auth/webhook', {
+            method: 'POST',
+            credentials: 'omit',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ webhook_url: url.trim() })
+          });
+          if (!authRes.ok) {
+            const err = await authRes.json().catch(() => ({}));
+            console.warn('[connect] Auth session failed (non-fatal on mobile):', err.error);
+          }
+        } catch (authErr) {
+          console.warn('[connect] Auth session skipped (non-fatal on mobile):', authErr.message);
         }
       }
       
@@ -678,6 +683,7 @@ export function AppProvider({ children }) {
   useEffect(() => { localStorage.setItem('disbox_chunks_per_message', chunksPerMessage.toString()); }, [chunksPerMessage]);
   useEffect(() => { localStorage.setItem('disbox_app_lock_enabled', appLockEnabled.toString()); }, [appLockEnabled]);
   useEffect(() => { localStorage.setItem('disbox_app_lock_pin', appLockPin); }, [appLockPin]);
+  useEffect(() => { localStorage.setItem('disbox_hide_sync_overlay', hideSyncOverlay.toString()); }, [hideSyncOverlay]);
 
   useEffect(() => {
     const handleBeforeUnload = (e) => {

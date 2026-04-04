@@ -8,7 +8,11 @@ const DB_VERSION = 2;
 const STORE_NAME = 'metadata';
 
 // ─── CORS Proxy ───────────────────────────────────────────────────────────────
-const PROXY_BASE   = '/api/proxy';
+// On mobile (Capacitor), there is no local Vite server — use the absolute Vercel proxy URL.
+const IS_CAPACITOR = typeof window !== 'undefined' && !!(window.Capacitor);
+const PROXY_BASE = IS_CAPACITOR
+  ? 'https://disbox-web-weld.vercel.app/api/proxy'
+  : '/api/proxy';
 const SLICE_SIZE   = 4 * 1024 * 1024; // 4MB
 // Note: PROXY_SECRET is no longer bundled into the client for security.
 // Signatures will only be generated if the secret is available (e.g. during development).

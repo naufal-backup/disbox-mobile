@@ -41,6 +41,27 @@ jobs:
         npx cap add android || true
         npx cap sync android
 
+    - name: Restore Disbox Brand Icons (cap sync overwrites them)
+      run: |
+        SOURCE="assets/icon.png"
+        RES="android/app/src/main/res"
+        magick "$SOURCE" -resize "48x48"   "$RES/mipmap-mdpi/ic_launcher.png"
+        magick "$SOURCE" -resize "48x48"   "$RES/mipmap-mdpi/ic_launcher_round.png"
+        magick "$SOURCE" -resize "48x48"   "$RES/mipmap-mdpi/ic_launcher_foreground.png"
+        magick "$SOURCE" -resize "72x72"   "$RES/mipmap-hdpi/ic_launcher.png"
+        magick "$SOURCE" -resize "72x72"   "$RES/mipmap-hdpi/ic_launcher_round.png"
+        magick "$SOURCE" -resize "72x72"   "$RES/mipmap-hdpi/ic_launcher_foreground.png"
+        magick "$SOURCE" -resize "96x96"   "$RES/mipmap-xhdpi/ic_launcher.png"
+        magick "$SOURCE" -resize "96x96"   "$RES/mipmap-xhdpi/ic_launcher_round.png"
+        magick "$SOURCE" -resize "96x96"   "$RES/mipmap-xhdpi/ic_launcher_foreground.png"
+        magick "$SOURCE" -resize "144x144" "$RES/mipmap-xxhdpi/ic_launcher.png"
+        magick "$SOURCE" -resize "144x144" "$RES/mipmap-xxhdpi/ic_launcher_round.png"
+        magick "$SOURCE" -resize "144x144" "$RES/mipmap-xxhdpi/ic_launcher_foreground.png"
+        magick "$SOURCE" -resize "192x192" "$RES/mipmap-xxxhdpi/ic_launcher.png"
+        magick "$SOURCE" -resize "192x192" "$RES/mipmap-xxxhdpi/ic_launcher_round.png"
+        magick "$SOURCE" -resize "192x192" "$RES/mipmap-xxxhdpi/ic_launcher_foreground.png"
+        echo "Icons restored!"
+
     - name: Generate Release Keystore
       run: |
         keytool -genkey -v \
