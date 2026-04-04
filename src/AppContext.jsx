@@ -278,7 +278,11 @@ export function AppProvider({ children }) {
       
       if (!isCloudAccount) {
         try {
-          const authRes = await fetch('https://disbox-web-weld.vercel.app/api/auth/webhook', {
+          const IS_CAPACITOR = typeof window !== 'undefined' && !!(window.Capacitor);
+          const IS_LOCAL = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+          const API_BASE = (IS_CAPACITOR || !IS_LOCAL) ? 'https://disbox-web-weld.vercel.app' : '';
+
+          const authRes = await fetch(`${API_BASE}/api/auth/webhook`, {
             method: 'POST',
             credentials: 'include',
             headers: { 'Content-Type': 'application/json' },

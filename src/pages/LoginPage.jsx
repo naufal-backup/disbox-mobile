@@ -7,7 +7,8 @@ import toast from 'react-hot-toast';
 
 const DISCORD_WEBHOOK_REGEX = /^https:\/\/discord(app)?\.com\/api\/webhooks\/\d+\/.+$/;
 const IS_CAPACITOR = typeof window !== 'undefined' && !!(window.Capacitor);
-const API_BASE = IS_CAPACITOR ? 'https://disbox-web-weld.vercel.app' : '';
+const IS_LOCAL = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+const API_BASE = (IS_CAPACITOR || !IS_LOCAL) ? 'https://disbox-web-weld.vercel.app' : '';
 
 export default function LoginPage() {
   const { connect, loading, t, language, setLanguage } = useApp();
@@ -40,7 +41,8 @@ export default function LoginPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ webhook_url: url.trim() })
       });
-      const authData = await authRes.json();
+      
+      const authData = await authRes.json().catch(() => ({ error: 'Invalid server response' }));
       if (!authData.ok) throw new Error(authData.error || t('error_connect_fail'));
 
       const result = await connect(url.trim(), { metadataUrl: metadataUrl.trim() });
@@ -64,7 +66,8 @@ export default function LoginPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: username.trim(), password })
       });
-      const data = await res.json();
+      
+      const data = await res.json().catch(() => ({ error: 'Format response server tidak valid' }));
 
       if (!data.ok) {
         setError(data.error || 'Login gagal');
@@ -80,7 +83,8 @@ export default function LoginPage() {
       if (!result.ok) setError(result.message || 'Gagal menghubungkan drive.');
 
     } catch (e) {
-      setError('Terjadi kesalahan server.');
+      console.error('Login error:', e);
+      setError(e.message || 'Terjadi kesalahan server.');
     }
   };
 
@@ -108,7 +112,8 @@ export default function LoginPage() {
           metadata_url: metadataUrl.trim() || null
         })
       });
-      const data = await res.json();
+      
+      const data = await res.json().catch(() => ({ error: 'Format response server tidak valid' }));
 
       if (!data.ok) {
         setError(data.error || 'Registrasi gagal');
@@ -120,7 +125,7 @@ export default function LoginPage() {
       setLoginMode('account');
       setPassword('');
     } catch (e) {
-      setError('Terjadi kesalahan server saat registrasi.');
+      setError(e.message || 'Terjadi kesalahan server saat registrasi.');
     }
   };
 
