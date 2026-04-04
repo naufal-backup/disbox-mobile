@@ -202,15 +202,15 @@ export const webElectronShim = {
     window.open('https://dash.cloudflare.com/profile/api-tokens/create?permissionGroupKeys=workers_scripts:edit,workers_kv_storage:edit,account_settings:read&name=Disbox+Worker', '_blank');
     return true;
   },
-  setPrefs: async (prefs) => {
+  setPrefs: async function(prefs) {
     try {
-      const current = await webElectronShim.getPrefs();
+      const current = await this.getPrefs();
       const updated = { ...current, ...prefs };
       localStorage.setItem('disbox_prefs', JSON.stringify(updated));
       return updated;
     } catch { return prefs; }
   },
-  getPrefs: async () => {
+  getPrefs: async function() {
     try {
       const saved = localStorage.getItem('disbox_prefs');
       return saved ? JSON.parse(saved) : {};

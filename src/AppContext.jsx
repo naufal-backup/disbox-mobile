@@ -46,9 +46,15 @@ export function AppProvider({ children }) {
   const [autoCloseTransfers, setAutoCloseTransfers] = useState(() => localStorage.getItem('disbox_auto_close_transfers') !== 'false');
   const [animationsEnabled, setAnimationsEnabled] = useState(() => localStorage.getItem('disbox_animations_enabled') !== 'false');
   const [metadataStatus, setMetadataStatus] = useState({ status: 'synced', items: 0 });
-  const [closeToTray, setCloseToTray] = useState(true);
-  const [startMinimized, setStartMinimized] = useState(false);
-  const [chunksPerMessage, setChunksPerMessage] = useState(1);
+  const [closeToTray, setCloseToTray] = useState(() => {
+    try { return localStorage.getItem('disbox_close_to_tray') !== 'false'; } catch { return true; }
+  });
+  const [startMinimized, setStartMinimized] = useState(() => {
+    try { return localStorage.getItem('disbox_start_minimized') === 'true'; } catch { return false; }
+  });
+  const [chunksPerMessage, setChunksPerMessage] = useState(() => {
+    try { return Number(localStorage.getItem('disbox_chunks_per_message')) || 1; } catch { return 1; }
+  });
   const [isVerified, setIsVerified] = useState(false);
   const [pinExists, setPinExists] = useState(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -202,15 +208,28 @@ export function AppProvider({ children }) {
   }, []);
 
   const updatePrefs = useCallback((prefs) => {
-    if (prefs.closeToTray !== undefined) setCloseToTray(prefs.closeToTray);
-    if (prefs.startMinimized !== undefined) setStartMinimized(prefs.startMinimized);
-    if (prefs.chunksPerMessage !== undefined) setChunksPerMessage(prefs.chunksPerMessage);
+    if (prefs.closeToTray !== undefined) {
+      setCloseToTray(prefs.closeToTray);
+      localStorage.setItem('disbox_close_to_tray', prefs.closeToTray.toString());
+    }
+    if (prefs.startMinimized !== undefined) {
+      setStartMinimized(prefs.startMinimized);
+      localStorage.setItem('disbox_start_minimized', prefs.startMinimized.toString());
+    }
+    if (prefs.chunksPerMessage !== undefined) {
+      setChunksPerMessage(prefs.chunksPerMessage);
+      localStorage.setItem('disbox_chunks_per_message', prefs.chunksPerMessage.toString());
+    }
     if (prefs.showPreviews !== undefined) setShowPreviews(prefs.showPreviews);
     if (prefs.showImagePreviews !== undefined) setShowImagePreviews(prefs.showImagePreviews);
     if (prefs.showVideoPreviews !== undefined) setShowVideoPreviews(prefs.showVideoPreviews);
     if (prefs.showAudioPreviews !== undefined) setShowAudioPreviews(prefs.showAudioPreviews);
     if (prefs.autoCloseTransfers !== undefined) setAutoCloseTransfers(prefs.autoCloseTransfers);
     if (prefs.showRecent !== undefined) setShowRecent(prefs.showRecent);
+    if (prefs.hideSyncOverlay !== undefined) {
+      setHideSyncOverlay(prefs.hideSyncOverlay);
+      localStorage.setItem('disbox_hide_sync_overlay', prefs.hideSyncOverlay.toString());
+    }
     if (window.electron?.setPrefs) window.electron.setPrefs(prefs);
   }, []);
 
