@@ -12,6 +12,50 @@ export const config = {
 const ALLOWED_HOSTS   = ['cdn.discordapp.com', 'media.discordapp.net', 'discord.com', 'discordapp.com'];
 const SLICE_SIZE      = 4 * 1024 * 1024; // 4MB
 
+const ALLOWED_ORIGINS = [
+  'https://disbox-web-weld.vercel.app',
+  'http://localhost:5173',
+  'http://localhost:4173',
+  'http://localhost',     // Capacitor Android
+  'https://localhost',     // Capacitor Android (alt)
+  'capacitor://localhost', // Capacitor iOS
+  'null' // Electron
+];
+
+const PROXY_SECRET = process.env.PROXY_SECRET || '';
+
+async function verifySignature(url, sig) {
+  if (!PROXY_SECRET || !sig) return false;
+  try {
+    const encoder   = new TextEncoder();
+    const cryptoKey = await crypto.subtle.importKey(
+      'raw', encoder.encode(PROXY_SECRET),
+      { name: 'HMAC', hash: 'SHA-256' }, false, ['verify']
+    );
+    const sigBytes = Uint8Array.from(atob(sig.replace(/-/g,'+').replace(/_/g,'/')), c => c.charCodeAt(0));
+    return await crypto.subtle.verify('HMAC', cryptoKey, sigBytes, encoder.encode(url));
+  } catch { return false; }
+}
+
+function hasValidSession(req) {
+  let token = null;
+  const authHeader = req.headers['authorization'];
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    token = authHeader.slice(7);
+  }
+  if (!token) {
+    const cookies = req.headers.cookie || '';
+    const sessionMatch = cookies.match(/session=([^;]+)/);
+    if (sessionMatch) token = sessionMatch[1];
+  }
+  if (!token) return false;
+  try {
+    return !!verifyJwt(token);
+  } catch {
+    return false;
+  }
+}
+
 export default async function handler(req, res) {
   if (handleCors(req, res)) return;
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
