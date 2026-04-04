@@ -166,32 +166,31 @@ function AppInner() {
 
   useEffect(() => {
     let isMounted = true;
-    let retryCount = 0;
-    const MAX_RETRIES = 3;
-
-    const autoConnect = async () => {
-      if (!webhookUrl || isConnected || loading || isConnecting) return;
-      
+    const timer = setTimeout(async () => {
+      if (!webhookUrl || isConnected || isConnecting || loading || !isMounted) return;
       setAutoConnecting(true);
       try {
         await connect(webhookUrl);
       } catch (err) {
         console.error('[App] Auto-connect failed:', err);
-        if (retryCount < MAX_RETRIES && isMounted) {
-          retryCount++;
-          const delay = Math.pow(2, retryCount) * 1000;
-          setTimeout(autoConnect, delay);
-        } else if (isMounted) {
-          toast.error('Gagal menghubungkan secara otomatis. Silakan login kembali.');
-        }
       } finally {
         if (isMounted) setAutoConnecting(false);
       }
-    };
+    }, 1000);
+    return () => { isMounted = false; clearTimeout(timer); };
+  }, [webhookUrl]);
 
-    autoConnect();
-    return () => { isMounted = false; };
-  }, [webhookUrl, isConnected]);
+  useEffect(() => {
+    const handleBackButton = async () => {
+      if (activePage !== 'drive') {
+        setActivePage('drive');
+      } else {
+        CapApp.exitApp();
+      }
+    };
+    const backListener = CapApp.addListener('backButton', handleBackButton);
+    return () => { backListener.then(l => l.remove()); };
+  }, [activePage]);
 
   // Tangani route /share/* — tampilkan ShareViewPage tanpa perlu login
   if (window.location.pathname.startsWith('/share/')) {

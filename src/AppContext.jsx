@@ -158,8 +158,8 @@ export function AppProvider({ children }) {
 
   // ─── 3. Leaf Callbacks (No dependencies on other callbacks) ────────────────
   const t = useCallback((key, params = null) => {
-    let text = translations[language]?.[key] || translations['en']?.[key] || key;
-    if (params) { Object.keys(params).forEach(k => { text = text.replace(`{${k}}`, params[k]); }); }
+    let text = translations?.[language]?.[key] || translations?.['en']?.[key] || key;
+    if (params) { Object.keys(params).forEach(k => { text = text.toString().replace(`{${k}}`, params[k]); }); }
     return text;
   }, [language]);
 
