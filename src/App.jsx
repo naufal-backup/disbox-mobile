@@ -125,22 +125,6 @@ function AppInner() {
   const [activePage, setActivePage] = useState('drive');
   const [autoConnecting, setAutoConnecting] = useState(false);
 
-  useEffect(() => {
-    const handleBackButton = async () => {
-      if (activePage !== 'drive') {
-        setActivePage('drive');
-      } else {
-        // Jika sudah di drive, biarkan sistem yang handle (biasanya exit app atau background)
-        CapApp.exitApp();
-      }
-    };
-
-    const backListener = CapApp.addListener('backButton', handleBackButton);
-    return () => {
-      backListener.then(l => l.remove());
-    };
-  }, [activePage]);
-
   const handleNext = (shuffle = false) => {
     if (!playlist.length || !currentTrack) return;
     const idx = playlist.findIndex(t => t.id === currentTrack.id);
@@ -212,6 +196,10 @@ function AppInner() {
     return <AppLockGateway onUnlocked={() => setIsAppUnlocked(true)} />;
   }
 
+  const showSplash = autoConnecting || isConnecting || loading;
+  const showDrive = isConnected && !showSplash;
+  const showLogin = !isConnected && !showSplash;
+
   return (
     <div className={styles.app}>
       <Toaster
@@ -227,13 +215,13 @@ function AppInner() {
         }}
       />
       <div className={styles.body}>
-        {(autoConnecting || isConnecting) ? (
+        {showSplash ? (
           <div className={styles.splash}>
             <div className={styles.splashIcon}>
               <Hexagon size={48} className="spin-slow" style={{ color: 'var(--accent)' }} />
             </div>
             <p className={styles.splashText}>
-              {isConnecting ? 'Switching drive...' : 'Reconnecting to drive...'}
+              {isConnecting ? 'Switching drive...' : 'Connecting to drive...'}
             </p>
             <button 
               className={styles.cancelAutoBtn}
@@ -245,7 +233,7 @@ function AppInner() {
               {t('cancel')}
             </button>
           </div>
-        ) : isConnected ? (
+        ) : showDrive ? (
           <DrivePage activePage={activePage} onNavigate={setActivePage} />
         ) : (
           <LoginPage />
