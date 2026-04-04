@@ -114,7 +114,7 @@ fun Sidebar(
                 label = "Keluar",
                 icon = Icons.Default.Logout,
                 selected = false,
-                onClick = { viewModel.logout(); onClose() }
+                onClick = { viewModel.disconnect(); onClose() }
             )
         }
     }

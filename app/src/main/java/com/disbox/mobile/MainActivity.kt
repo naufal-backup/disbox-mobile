@@ -31,6 +31,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import kotlinx.coroutines.launch
 import com.disbox.mobile.data.DiscordDataSourceFactory
 import com.disbox.mobile.data.repository.DisboxRepository
 import com.disbox.mobile.navigation.Screen

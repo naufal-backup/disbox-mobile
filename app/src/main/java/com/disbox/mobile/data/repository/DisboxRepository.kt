@@ -70,7 +70,7 @@ class DisboxRepository(
                 val b64 = cfg["metadata_b64"] as? String
                 if (b64 != null) {
                     val encryptedBytes = android.util.Base64.decode(b64, android.util.Base64.DEFAULT)
-                    val decryptedBytes = encryptionKey?.let { CryptoUtils.decrypt(encryptedBytes, it) } ?: encryptedBytes
+                    val decryptedBytes = encryptionKey?.let { CryptoUtils.decryptGCM(encryptedBytes, it) } ?: encryptedBytes
                     legacyContainer = gson.fromJson(String(decryptedBytes), MetadataContainer::class.java)
                 }
             }
@@ -109,7 +109,7 @@ class DisboxRepository(
 
     private suspend fun downloadMetadataFromUrl(url: String): MetadataContainer {
         val encryptedBytes = apiService.downloadAttachment(url) ?: throw Exception("Download failed")
-        val decryptedBytes = encryptionKey?.let { CryptoUtils.decrypt(encryptedBytes, it) } ?: encryptedBytes
+        val decryptedBytes = encryptionKey?.let { CryptoUtils.decryptGCM(encryptedBytes, it) } ?: encryptedBytes
         return gson.fromJson(String(decryptedBytes), MetadataContainer::class.java)
     }
 
@@ -141,7 +141,7 @@ class DisboxRepository(
             val pin = settingsDao.getSetting(hashedWebhook!!, "pin_hash")?.value
             val container = MetadataContainer(files = files, pinHash = pin)
             val json = gson.toJson(container)
-            val encrypted = encryptionKey?.let { CryptoUtils.encrypt(json.toByteArray(), it) } ?: json.toByteArray()
+            val encrypted = encryptionKey?.let { CryptoUtils.encryptGCM(json.toByteArray(), it) } ?: json.toByteArray()
             apiService.uploadFile(baseUrl, "metadata.json", encrypted)?.let { apiService.patchWebhookName(baseUrl, "dbx: $it") }
         }
     }
@@ -239,7 +239,7 @@ class DisboxRepository(
 
                 val read = stream.read(buffer)
                 if (read <= 0) break
-                val encrypted = encryptionKey?.let { CryptoUtils.encrypt(buffer.copyOf(read), it) } ?: buffer.copyOf(read)
+                val encrypted = encryptionKey?.let { CryptoUtils.encryptGCM(buffer.copyOf(read), it) } ?: buffer.copyOf(read)
                 apiService.uploadFile(baseUrl, "${fileId}_${name}.part$i", encrypted)?.let { 
                     msgIds.add(MessageId(it, 0))
                     // Save progress
@@ -268,7 +268,7 @@ class DisboxRepository(
         
         // downloadAttachment in apiService is already proxied
         val data = apiService.downloadAttachment(url ?: return@withContext null) ?: return@withContext null
-        return@withContext encryptionKey?.let { CryptoUtils.decrypt(data, it) } ?: data
+        return@withContext encryptionKey?.let { CryptoUtils.decryptGCM(data, it) } ?: data
     }
 
     suspend fun downloadFileChunkFromMsg(messageIdsJson: String, chunkIndex: Int): ByteArray? {
@@ -321,7 +321,7 @@ class DisboxRepository(
             val workerUrl = (settings.cf_worker_url ?: "https://disbox-shared-link.naufal-backup.workers.dev").trimEnd('/')
             
             val file = if (fileId != null) fileDao.getFileById(fileId, hash) else fileDao.getFileByPath(filePath.trim('/'), hash)
-                ?: throw Exception("File not found")
+            if (file == null) throw Exception("File not found")
             
             val messageIdsRaw = gson.fromJson<List<MessageId>>(file.messageIds, object : TypeToken<List<MessageId>>() {}.type)
             val messageIds = messageIdsRaw.map { MessageIdRequest(it.msgId, it.index) }
