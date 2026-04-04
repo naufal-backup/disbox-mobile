@@ -13,15 +13,15 @@ export default function LoginPage() {
   const { connect, loading, t, language, setLanguage } = useApp();
   const [loginMode, setLoginMode] = useState(null); // 'manual', 'account', 'register' atau null
   const [showInfo, setShowInfo] = useState(false);
-  
+
   // Manual States
   const [url, setUrl] = useState('');
   const [metadataUrl, setMetadataUrl] = useState('');
-  
+
   // Account States
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  
+
   const [error, setError] = useState('');
 
   const handleManualConnect = async () => {
@@ -150,7 +150,7 @@ export default function LoginPage() {
   return (
     <div className={styles.page}>
       {showInfo && <InfoPopup />}
-      
+
       <div className={styles.bg}>
         <div className={styles.glow1} /><div className={styles.glow2} /><div className={styles.grid} />
       </div>
@@ -167,7 +167,7 @@ export default function LoginPage() {
         <h1 className={styles.title}>
           <Cloud size={24} style={{ verticalAlign: 'middle', marginRight: 8, color: 'var(--accent)' }} />
           Disbox
-          <span className={styles.webBadge}>Web</span>
+
         </h1>
         <p className={styles.subtitle}>{t('subtitle')}</p>
 
@@ -178,8 +178,8 @@ export default function LoginPage() {
             <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 20 }}>
               <div className={styles.langSelector}>
                 <Globe size={14} style={{ color: 'var(--text-muted)' }} />
-                <select 
-                  value={language} 
+                <select
+                  value={language}
                   onChange={e => setLanguage(e.target.value)}
                   className={styles.langSelect}
                 >
@@ -225,7 +225,7 @@ export default function LoginPage() {
 
             <div className={styles.inputGroup}>
               <label className={styles.label}>{t('username')}</label>
-              <input 
+              <input
                 type="text" className={styles.input} placeholder={t('enter_username')}
                 value={username} onChange={e => setUsername(e.target.value)}
               />
@@ -235,7 +235,7 @@ export default function LoginPage() {
               <label className={styles.label}>{t('password')}</label>
               <PasswordInput
                 className={styles.input} placeholder={t('password_placeholder')}
-                value={password} onChange={e => setPassword(e.target.value)}                onKeyDown={e => e.key === 'Enter' && handleAccountLogin()}
+                value={password} onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAccountLogin()}
               />
             </div>
 
@@ -254,7 +254,7 @@ export default function LoginPage() {
 
             <div className={styles.inputGroup}>
               <label className={styles.label}>{t('username')}</label>
-              <input 
+              <input
                 type="text" className={styles.input} placeholder={t('new_username')}
                 value={username} onChange={e => setUsername(e.target.value)}
               />
@@ -262,7 +262,7 @@ export default function LoginPage() {
 
             <div className={styles.inputGroup}>
               <label className={styles.label}>{t('password')}</label>
-              <PasswordInput 
+              <PasswordInput
                 className={styles.input} placeholder={t('password_placeholder')}
                 value={password} onChange={e => setPassword(e.target.value)}
               />
@@ -270,7 +270,7 @@ export default function LoginPage() {
 
             <div className={styles.inputGroup}>
               <label className={styles.label}>Webhook URL</label>
-              <input 
+              <input
                 type="text" className={styles.input} placeholder={t('webhook_placeholder')}
                 value={url} onChange={e => setUrl(e.target.value)}
               />
@@ -278,7 +278,7 @@ export default function LoginPage() {
 
             <div className={styles.inputGroup}>
               <label className={styles.label}>Link CDN Metadata (Opsional)</label>
-              <input 
+              <input
                 type="text" className={styles.input} placeholder="https://cdn.discordapp.com/..."
                 value={metadataUrl} onChange={e => setMetadataUrl(e.target.value)}
               />
@@ -300,7 +300,7 @@ export default function LoginPage() {
 
             <div className={styles.inputGroup}>
               <label className={styles.label}>Webhook URL</label>
-              <input 
+              <input
                 type="text" className={styles.input} placeholder={t('webhook_placeholder')}
                 value={url} onChange={e => setUrl(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleManualConnect()}
