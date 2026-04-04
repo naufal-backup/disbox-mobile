@@ -6,6 +6,8 @@ import styles from './LoginPage.module.css';
 import toast from 'react-hot-toast';
 
 const DISCORD_WEBHOOK_REGEX = /^https:\/\/discord(app)?\.com\/api\/webhooks\/\d+\/.+$/;
+const IS_CAPACITOR = typeof window !== 'undefined' && !!(window.Capacitor);
+const API_BASE = IS_CAPACITOR ? 'https://disbox-web-weld.vercel.app' : '';
 
 export default function LoginPage() {
   const { connect, loading, t, language, setLanguage } = useApp();
@@ -32,9 +34,9 @@ export default function LoginPage() {
     }
 
     try {
-      const authRes = await fetch('/api/auth/webhook', {
+      const authRes = await fetch(`${API_BASE}/api/auth/webhook`, {
         method: 'POST',
-        credentials: 'include',
+        credentials: 'omit',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ webhook_url: url.trim() })
       });
@@ -56,9 +58,9 @@ export default function LoginPage() {
     }
 
     try {
-      const res = await fetch('/api/auth/login', {
+      const res = await fetch(`${API_BASE}/api/auth/login`, {
         method: 'POST',
-        credentials: 'include',
+        credentials: 'omit',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: username.trim(), password })
       });
@@ -95,9 +97,9 @@ export default function LoginPage() {
     }
 
     try {
-      const res = await fetch('/api/auth/register', {
+      const res = await fetch(`${API_BASE}/api/auth/register`, {
         method: 'POST',
-        credentials: 'include',
+        credentials: 'omit',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           username: username.trim(),
