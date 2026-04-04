@@ -4,7 +4,8 @@ const ALLOWED_ORIGINS = (() => {
     'http://localhost:5173',
     'http://localhost:4173',
     'http://localhost:3000',
-    'https://localhost',     // Capacitor Android
+    'http://localhost',      // Capacitor Android
+    'https://localhost',     // Capacitor Android (alternative)
     'capacitor://localhost', // Capacitor iOS
     'null' // Allow Electron's file:// protocol
   ];
