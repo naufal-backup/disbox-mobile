@@ -2,8 +2,8 @@ import { supabase } from './_lib/supabase.js';
 import { encrypt } from './_lib/encryption.js';
 
 export default async function handler(req, res) {
-  const { pathname } = new URL(req.url, `http://${req.headers.host}`);
-  const action = pathname.split('/').pop();
+  const urlObj = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
+  const action = urlObj.pathname.split('/').pop();
   const adminKey = req.query.key;
 
   if (adminKey !== process.env.PROXY_SECRET) {

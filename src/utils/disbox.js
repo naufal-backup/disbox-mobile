@@ -1,6 +1,7 @@
 // ─── Disbox API — Tidy JSONB Edition ─────────────────────────────────────────
 
-export const BASE_API = 'https://disbox-web-weld.vercel.app';
+const IS_CAPACITOR = typeof window !== 'undefined' && !!(window.Capacitor);
+export const BASE_API = IS_CAPACITOR ? 'https://disbox-web-weld.vercel.app' : '';
 
 const CHUNK_SIZE = 7.5 * 1024 * 1024;
 

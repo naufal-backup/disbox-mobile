@@ -280,7 +280,7 @@ export function AppProvider({ children }) {
         try {
           const authRes = await fetch('https://disbox-web-weld.vercel.app/api/auth/webhook', {
             method: 'POST',
-            credentials: 'omit',
+            credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ webhook_url: url.trim() })
           });

@@ -2,6 +2,7 @@ import { supabase } from './_lib/supabase.js';
 import { encrypt, decrypt } from './_lib/encryption.js';
 import crypto from 'crypto';
 import { sign } from './_lib/jwt.js';
+import { handleCors } from './_lib/cors.js';
 
 function setSessionCookie(res, token) {
   const cookie = `session=${token}; HttpOnly; Secure; SameSite=None; Path=/; Max-Age=604800`;
@@ -14,10 +15,11 @@ function clearSessionCookie(res) {
 }
 
 export default async function handler(req, res) {
-  const { pathname } = new URL(req.url, `http://${req.headers.host}`);
-  const action = pathname.split('/').pop();
+  // Handle CORS (preflight and headers)
+  if (handleCors(req, res)) return;
 
-  if (req.method === 'OPTIONS') return res.status(200).end();
+  const urlObj = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
+  const action = urlObj.pathname.split('/').pop();
 
   if (action === 'register') {
     const { username, password, webhook_url, metadata_url } = req.body;

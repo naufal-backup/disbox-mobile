@@ -36,7 +36,7 @@ export default function LoginPage() {
     try {
       const authRes = await fetch(`${API_BASE}/api/auth/webhook`, {
         method: 'POST',
-        credentials: 'omit',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ webhook_url: url.trim() })
       });
@@ -60,7 +60,7 @@ export default function LoginPage() {
     try {
       const res = await fetch(`${API_BASE}/api/auth/login`, {
         method: 'POST',
-        credentials: 'omit',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: username.trim(), password })
       });
@@ -99,7 +99,7 @@ export default function LoginPage() {
     try {
       const res = await fetch(`${API_BASE}/api/auth/register`, {
         method: 'POST',
-        credentials: 'omit',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           username: username.trim(),

@@ -7,8 +7,8 @@ export default async function handler(req, res) {
   const corsHandled = handleCors(req, res);
   if (corsHandled) return;
 
-  const { pathname } = new URL(req.url, `http://${req.headers.host}`);
-  const action = pathname.split('/').pop();
+  const urlObj = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
+  const action = urlObj.pathname.split('/').pop();
 
   // Auth middleware
   const unauthorized = requireAuth(req, res);
