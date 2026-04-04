@@ -740,10 +740,3 @@ export function AppProvider({ children }) {
     </AppContext.Provider>
   );
 }
-hook: handleRemoveWebhook,
-      addWebhook: handleAddWebhook,
-    }}>
-      {children}
-    </AppContext.Provider>
-  );
-}
