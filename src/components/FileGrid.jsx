@@ -450,13 +450,6 @@ const handleBulkDelete = async () => {
 
   const handleDropZone = (e) => { e.preventDefault(); const droppedFiles = Array.from(e.dataTransfer.files); if (droppedFiles.length > 0) handleUpload(droppedFiles); };
 
-  const toggleSelect = (id, e) => {
-    e.stopPropagation();
-    if (!e.ctrlKey && !isSelectionMode) { setSelectedFiles(new Set()); return; }
-    setIsSelectionMode(true);
-    setSelectedFiles(prev => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; });
-  };
-
   const handleDragStart = (e, itemPath, id = null) => {
     const itemKey = id || itemPath;
     if (isSelectionMode && selectedFiles.has(itemKey)) { const payload = { bulk: true, items: [...selectedFiles] }; e.dataTransfer.setData('text/plain', JSON.stringify(payload)); e.dataTransfer.effectAllowed = 'move'; setDragSource(payload); return; }

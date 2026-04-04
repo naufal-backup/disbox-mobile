@@ -120,7 +120,10 @@ export default async function handler(req, res) {
     const contentRange  = upstream.headers.get('content-range');
     const contentLength = upstream.headers.get('content-length');
 
-    res.setHeader('Access-Control-Allow-Origin', isOriginAllowed ? (origin.split('/').slice(0, 3).join('/')) : ALLOWED_ORIGINS[0]);
+    if (isOriginAllowed && origin) {
+      res.setHeader('Access-Control-Allow-Origin', origin.split('/').slice(0, 3).join('/'));
+    }
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
     res.setHeader('Content-Type', contentType);
     res.setHeader('Cache-Control', 'private, max-age=3600');
     res.setHeader('X-Slice-Size', SLICE_SIZE);

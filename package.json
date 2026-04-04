@@ -24,6 +24,7 @@
     "@capacitor/app": "^5.0.7",
     "@capacitor/core": "^5.7.0",
     "@capacitor/ios": "^5.7.0",
+
     "@fontsource/inter": "^5.2.8",
     "@fontsource/jetbrains-mono": "^5.2.8",
     "@fontsource/syne": "^5.2.7",

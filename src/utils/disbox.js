@@ -1,7 +1,7 @@
 // ─── Disbox API — Tidy JSONB Edition ─────────────────────────────────────────
 
-const IS_CAPACITOR = typeof window !== 'undefined' && !!(window.Capacitor);
-export const BASE_API = IS_CAPACITOR ? 'https://disbox-web-weld.vercel.app' : '';
+const IS_LOCAL = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+export const BASE_API = IS_LOCAL ? '' : 'https://disbox-web-weld.vercel.app';
 
 const CHUNK_SIZE = 7.5 * 1024 * 1024;
 
@@ -563,7 +563,7 @@ export class DisboxAPI {
     const url = resData.attachments?.[0]?.url;
     let bytes;
     if (window.electron) {
-      bytes = await window.electron.proxyDownload(url, signal || transferId);
+      bytes = await window.electron.proxyDownload(url, signal);
     } else {
       const proxiedUrl = `${BASE_API}/api/proxy?url=${encodeURIComponent(url)}`;
       bytes = await fetch(proxiedUrl, { 
@@ -601,7 +601,7 @@ export class DisboxAPI {
         resData = JSON.parse(res.body);
       } else {
         const webhookBase = this.webhookUrl.split('?')[0];
-        const proxiedMsgUrl = `${BASE_API}/api/proxy?url=${encodeURIComponent(`${webhookBase}/messages/${chunkIdx}`)}`;
+        const proxiedMsgUrl = `${BASE_API}/api/proxy?url=${encodeURIComponent(`${webhookBase}/messages/${msgId}`)}`;
         const res = await fetch(proxiedMsgUrl, { signal, credentials: 'include' });
         if (!res.ok) throw new Error(`Gagal memuat chunk ${chunkIdx + 1}`);
         resData = await res.json();
@@ -614,9 +614,9 @@ export class DisboxAPI {
       } else {
         const proxiedUrl = `${BASE_API}/api/proxy?url=${encodeURIComponent(url)}`;
         bytes = await fetch(proxiedUrl, { 
-        ...(signal ? { signal } : {}),
-        credentials: 'include'
-      }).then(r => r.arrayBuffer());
+          ...(signal ? { signal } : {}),
+          credentials: 'include'
+        }).then(r => r.arrayBuffer());
       }
 
       const decrypted = await this.decrypt(bytes);
