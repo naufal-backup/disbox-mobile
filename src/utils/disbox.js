@@ -1,6 +1,5 @@
 // ─── Disbox API — Tidy JSONB Edition ─────────────────────────────────────────
 
-const IS_CAPACITOR = typeof window !== 'undefined' && (!!window.Capacitor || window.location.protocol === 'capacitor:' || window.location.protocol === 'http:');
 const IS_ACTUAL_LOCAL = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') && !window.Capacitor;
 export const BASE_API = IS_ACTUAL_LOCAL ? '' : 'https://disbox-web-weld.vercel.app';
 
