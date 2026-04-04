@@ -55,7 +55,7 @@ export function AppProvider({ children }) {
   const [chunksPerMessage, setChunksPerMessage] = useState(() => {
     try { return Number(localStorage.getItem('disbox_chunks_per_message')) || 1; } catch { return 1; }
   });
-  const [isVerified, setIsVerified] = useState(false);
+  const [isVerified, setIsVerified] = useState(() => localStorage.getItem('disbox_is_verified') === 'true');
   const [pinExists, setPinExists] = useState(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [appLockEnabled, setAppLockEnabled] = useState(() => localStorage.getItem('disbox_app_lock_enabled') === 'true');
@@ -368,6 +368,7 @@ export function AppProvider({ children }) {
     clearThumbCache();
     localStorage.removeItem('disbox_webhook');
     localStorage.removeItem('dbx_username');
+    localStorage.removeItem('disbox_is_verified');
     setApi(null);
     setWebhookUrl('');
     setIsConnected(false);
@@ -706,6 +707,7 @@ export function AppProvider({ children }) {
   useEffect(() => { localStorage.setItem('disbox_chunks_per_message', chunksPerMessage.toString()); }, [chunksPerMessage]);
   useEffect(() => { localStorage.setItem('disbox_app_lock_enabled', appLockEnabled.toString()); }, [appLockEnabled]);
   useEffect(() => { localStorage.setItem('disbox_app_lock_pin', appLockPin); }, [appLockPin]);
+  useEffect(() => { localStorage.setItem('disbox_is_verified', isVerified.toString()); }, [isVerified]);
   useEffect(() => { localStorage.setItem('disbox_hide_sync_overlay', hideSyncOverlay.toString()); }, [hideSyncOverlay]);
 
   useEffect(() => {
