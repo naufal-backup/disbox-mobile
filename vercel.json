@@ -1,0 +1,12 @@
+{
+  "rewrites": [
+    { "source": "/api/auth/(.*)", "destination": "/api/auth.js" },
+    { "source": "/api/files/(.*)", "destination": "/api/files.js" },
+    { "source": "/api/cloud/(.*)", "destination": "/api/cloud.js" },
+    { "source": "/api/setup-db", "destination": "/api/admin.js" },
+    { "source": "/api/migrate-webhooks", "destination": "/api/admin.js" },
+    { "source": "/discord/callback", "destination": "/index.html" },
+    { "source": "/assets/(.*)", "destination": "/assets/$1" },
+    { "source": "/((?!api/|assets/).*)", "destination": "/index.html" }
+  ]
+}

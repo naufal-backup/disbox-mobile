@@ -16,58 +16,82 @@ jobs:
       contents: write
     steps:
     - uses: actions/checkout@v4
-    
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+        cache-dependency-path: disbox-mobile/package-lock.json
+
     - name: set up JDK 17
       uses: actions/setup-java@v4
       with:
         java-version: '17'
         distribution: 'temurin'
-        cache: gradle
 
-    - name: Apply Fixes
+    - name: Install dependencies
+      working-directory: disbox-mobile
+      run: npm install
+
+    - name: Build Web Application
+      working-directory: disbox-mobile
+      run: npm run build
+
+    - name: Setup Capacitor Android
+      working-directory: disbox-mobile
       run: |
-        echo "Applying environment fixes..."
-        # Fix gradlew permission if missing
-        if [ ! -x gradlew ]; then
-          echo "Setting execution permission for gradlew"
-          chmod +x gradlew
-        else
-          echo "gradlew already has execution permission"
-        fi
-        
-        # [NEW] Fix common build issues
-        if [ -d "app/build" ]; then
-          echo "Cleaning previous build artifacts"
-          rm -rf app/build
-        fi
-        
-        # Future fixes can be added here as if-else blocks
-        # if [ some_condition ]; then do_fix; fi
+        npx cap add android || true
+        npx cap sync android
 
-    - name: Build with Gradle
+    - name: Grant execute permission for gradlew
+      working-directory: disbox-mobile/android
+      run: chmod +x gradlew
+
+    - name: Build APK with Gradle
+      working-directory: disbox-mobile/android
       run: ./gradlew assembleRelease
+
+    - name: Build AAB with Gradle (Only for tagged releases)
+      if: startsWith(github.ref, 'refs/tags/v')
+      working-directory: disbox-mobile/android
+      run: ./gradlew bundleRelease
 
     - name: Upload APK Artifact
       uses: actions/upload-artifact@v4
       with:
         name: release-apk
-        path: app/build/outputs/apk/release/*.apk
+        path: disbox-mobile/android/app/build/outputs/apk/release/*.apk
 
-    - name: Cleanup Previous Latest Release
+    - name: Cleanup Previous Latest Release (only on main/master)
+      if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
       run: |
         gh release delete latest --yes || true
         git push origin :refs/tags/latest || true
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Create Release
+    - name: Create Latest Release (only on main/master)
+      if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
       uses: softprops/action-gh-release@v2
       with:
         tag_name: latest
-        name: latest
-        files: app/build/outputs/apk/release/*.apk
+        name: "Disbox Mobile - Latest"
+        files: disbox-mobile/android/app/build/outputs/apk/release/*.apk
         generate_release_notes: true
         prerelease: false
         make_latest: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Create Tagged Release
+      if: startsWith(github.ref, 'refs/tags/v')
+      uses: softprops/action-gh-release@v2
+      with:
+        files: |
+          disbox-mobile/android/app/build/outputs/apk/release/*.apk
+          disbox-mobile/android/app/build/outputs/bundle/release/*.aab
+        draft: false
+        prerelease: false
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,9 @@
+{
+  "appId": "com.disbox.app",
+  "appName": "Disbox",
+  "webDir": "dist",
+  "bundledWebRuntime": false,
+  "server": {
+    "androidScheme": "https"
+  }
+}

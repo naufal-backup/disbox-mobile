@@ -1,57 +1,52 @@
-# Disbox Mobile Development Plan
+# Disbox Mobile Re-creation (Web-to-Mobile)
 
-## Status Overview
-- [x] Fase 1: Fondasi Proyek, Keamanan & Autentikasi Backend (COMPLETED)
-- [x] Fase 2: Core File Engine & Discord Storage Network (COMPLETED)
-- [x] Fase 3: UI/UX File Explorer & Navigasi (COMPLETED)
-- [x] Fase 4: Lapisan Keamanan Lanjutan (PIN & Lock) (COMPLETED)
-- [x] Fase 5: Media Player & Preview Engine (COMPLETED)
-- [x] Fase 6: Cloud Syncing & Sistem Sharing Link (COMPLETED)
-- [x] Fase 7: Pengaturan, Finishing, Test Coverage & Release Pipeline (COMPLETED)
+This project has been recreated using the latest Disbox Web codebase, optimized for mobile devices.
+It uses Capacitor to wrap the web application into a native Android/iOS shell.
 
----
+## Optimization Improvements:
+- Removed Kotlin in favor of a unified React/Vite codebase.
+- Fixed UI issues: Sidebar now correctly stays above the Music Bar on mobile.
+- Improved mobile feel: Disabled pull-to-refresh overscroll and text selection.
+- Performance: Added settings to disable animations for low-end devices.
 
-## Detailed Phases
+## How to Build & Run:
 
-### 🚀 FASE 1: Fondasi Proyek, Keamanan & Autentikasi Backend
-- [ ] Setup Proyek & Dependencies (Ktor, Compose, Hilt/Koin, Room, EncryptedSharedPreferences)
-- [ ] Implementasi Kriptografi Dasar (AES-GCM 256-bit & AES-256-CBC)
-- [ ] Backend Auth (Supabase) & Session Management
-- [ ] Guest/Manual Auth (Discord Webhook URL validation)
-- [ ] Unit Testing for Crypto & Regex
+1. **Install Dependencies:**
+   Run `npm install` (or your preferred package manager).
 
-### 🚀 FASE 2: Core File Engine & Discord Storage Network
-- [ ] Upload Engine (Chunking & Enkripsi 7.5MB)
-- [ ] Download Engine (Chunk merging & decryption)
-- [ ] Supabase & Discord Metadata Sync
-- [ ] Local Cache (Room DB)
-- [ ] Integration Testing (Mock Upload/Download)
+2. **Add Mobile Platforms:**
+   ```bash
+   npx cap add android
+   npx cap add ios
+   ```
 
-### 🚀 FASE 3: UI/UX File Explorer & Navigasi
-- [ ] Layouting (Grid/List View with Zoom slider)
-- [ ] Komponen Navigasi (Sidebar, Breadcrumbs, Search)
-- [ ] File Actions (Rename, Move, Copy, Delete, etc.)
-- [ ] Rubber Band Selection
-- [ ] UI Testing (Espresso/Compose Rule)
+3. **Build the Web Project:**
+   ```bash
+   npm run build
+   ```
 
-### 🚀 FASE 4: Lapisan Keamanan Lanjutan (PIN & Lock)
-- [ ] Master PIN (SHA-256 + salt)
-- [ ] App Lock Screen
-- [ ] File/Folder Lock logic
+4. **Sync to Capacitor:**
+   ```bash
+   npx cap sync
+   ```
 
-### 🚀 FASE 5: Media Player & Preview Engine
-- [ ] Video/Audio Preview (ExoPlayer + Decryption Proxy)
-- [ ] Image Preview (Coil/Glide + Decryption)
-- [ ] Text/Code Preview (Syntax highlighting)
-- [ ] Thumbnail Generation Worker
+5. **Open in Android Studio / Xcode:**
+   ```bash
+   npx cap open android
+   # or
+   npx cap open ios
+   ```
 
-### 🚀 FASE 6: Cloud Syncing & Sistem Sharing Link
-- [ ] Discord OAuth flow
-- [ ] Share Link Generation (3-part Token)
-- [ ] Shared Page UI
-
-### 🚀 FASE 7: Pengaturan, Finishing, Test Coverage & Release Pipeline
-- [ ] Settings Screen (Theme, Language, Chunk Size)
-- [ ] Responsive Layout (Mobile/Tablet/Desktop)
-- [ ] Test Coverage > 80%
-- [ ] CI/CD Pipeline (GitHub Actions)
+## Development Workflow:
+To see changes on your device while developing:
+1. Ensure your phone and computer are on the same Wi-Fi.
+2. Update `capacitor.config.json` server section:
+   ```json
+   "server": {
+     "url": "http://YOUR_COMPUTER_IP:5173",
+     "cleartext": true
+   }
+   ```
+3. Run `npm run dev -- --host`.
+4. Run `npx cap sync`.
+5. Run the app from Android Studio.

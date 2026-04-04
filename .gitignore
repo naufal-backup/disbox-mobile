@@ -1,53 +1,36 @@
-# Built artifacts
-bin/
-gen/
-out/
-build/
-/build
-/app/build
-
-# Gradle files
-.gradle/
-
-# Local configuration files
-local.properties
-
-# Android Studio / IntelliJ
-.idea/
-*.iml
-*.ipr
-*.iws
-.idea/workspace.xml
-.idea/tasks.xml
-.idea/libraries/
-.idea/dictionaries/
-.idea/caches/
-.idea/assetWizardSettings.xml
-.idea/modules.xml
-.idea/navEditor.xml
-captures/
-
-# Generated files
-.DS_Store
-Thumbs.db
-
-# Signing files
-*.jks
-*.keystore
-*.pk8
-*.p12
-google-services.json
-
-# External native builds
-.externalNativeBuild/
-.cxx/
-
 # Logs
+logs
 *.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
 
-# Android Profiler
-*.hprof
-/.gradle
-/app/build
-/release
-disbox-mobile.txt
+# Node modules
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# Editor folders and files
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+
+
+# Vercel
+.vercel
+
+# Vite
+*.timestamp-*
+.env*
+*.local
+*_b64.txt
