@@ -43,6 +43,7 @@ jobs:
 
     - name: Restore Disbox Brand Icons (cap sync overwrites them)
       run: |
+        sudo apt-get update && sudo apt-get install -y imagemagick
         SOURCE="assets/icon.png"
         RES="android/app/src/main/res"
         # GitHub Actions uses ImageMagick 6 (convert), not IM7 (magick)
