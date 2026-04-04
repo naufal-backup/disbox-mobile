@@ -179,7 +179,9 @@ export default function FileGrid({ isLockedView = false, isStarredView = false, 
         const isRecent = (Date.now() - (item.createdAt || 0)) < (7 * 24 * 60 * 60 * 1000);
         includeBasedOnView = isRecent;
       } else {
-        includeBasedOnView = !item.isLocked;
+        const fileDirStr = parts.slice(0, -1).join('/');
+        const isDirectChild = fileDirStr === dirPath;
+        includeBasedOnView = !item.isLocked || (isVerified && isDirectChild);
       }
 
       if (includeBasedOnView && matchesSearch && name !== '.keep') {
@@ -221,7 +223,9 @@ export default function FileGrid({ isLockedView = false, isStarredView = false, 
         } else if (isRecentView) {
           includeDirBasedOnView = false;
         } else {
-          includeDirBasedOnView = !folderIsLocked;
+          const parentPath = currentAcc.split('/').slice(0, -1).join('/');
+          const isChildOfCurrent = parentPath === dirPath;
+          includeDirBasedOnView = !folderIsLocked || (isVerified && isChildOfCurrent);
         }
 
         let shouldHideDirBecauseParentLocked = false;
