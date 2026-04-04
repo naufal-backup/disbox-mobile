@@ -4,6 +4,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -308,7 +309,7 @@ fun DriveScreen(
                 ListItem(
                     headlineContent = { Text(viewModel.t("delete"), color = MaterialTheme.colorScheme.error) },
                     leadingContent = { Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error) },
-                    modifier = Modifier.clickable { viewModel.deleteItems(listOf(file.id)); showFileActions = null }
+                    modifier = Modifier.clickable { viewModel.deletePaths(listOf(file.id)); showFileActions = null }
                 )
             }
         }
