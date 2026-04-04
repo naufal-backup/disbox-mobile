@@ -201,6 +201,7 @@ export default function FileGrid({ isLockedView = false, isStarredView = false, 
               break;
             }
           }
+          if (isDirectChild) shouldHideBecauseParentLocked = false;
         }
 
         if (!shouldHideBecauseParentLocked && (q || isStarredView || isRecentView || (isLockedView && isDirectChild) || isDirectChild)) {
@@ -242,6 +243,9 @@ export default function FileGrid({ isLockedView = false, isStarredView = false, 
               break;
             }
           }
+          const parentPath = currentAcc.split('/').slice(0, -1).join('/');
+          const isChildOfCurrent = parentPath === dirPath;
+          if (isChildOfCurrent) shouldHideDirBecauseParentLocked = false;
         }
 
         if (includeDirBasedOnView && !shouldHideDirBecauseParentLocked && (q ? dirName.toLowerCase().includes(q) : (isStarredView || (isLockedView && isChildOfCurrent) || isChildOfCurrent))) {
