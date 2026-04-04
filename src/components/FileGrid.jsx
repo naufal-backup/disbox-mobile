@@ -472,12 +472,10 @@ const handleBulkDelete = async () => {
       <div className={styles.toolbar}>
         {(() => {
           const totalChars = pathParts.join('').length + (pathParts.length * 3);
-          const isCompact = (totalChars > 45 || pathParts.length > 4) && pathParts.length > 1;
+          const isCompact = (totalChars > 30 || pathParts.length > 3) && pathParts.length > 1;
           const lastPart = pathParts[pathParts.length - 1] || '';
-          const displayLen = isCompact ? (10 + lastPart.length) : totalChars;
-          const isShort = displayLen < 160;
           return (
-            <div className={styles.breadcrumb} style={{ marginRight: isShort ? 24 : 124 }}>
+            <div className={styles.breadcrumb}>
               <button className={styles.breadcrumbItem} onClick={() => navigate('/')} onDragOver={e => e.preventDefault()} onDrop={e => handleDropMove(e, '')}><Home size={13} /></button>
               {!isCompact ? pathParts.map((part, i) => { const targetPath = '/' + pathParts.slice(0, i + 1).join('/'); const isLast = i === pathParts.length - 1; return <span key={i} className={styles.breadcrumbRow}><ChevronRight size={12} className={styles.breadcrumbSep} /><button className={`${styles.breadcrumbItem} ${isLast ? styles.breadcrumbActive : ''}`} onClick={() => navigate(targetPath)}>{part}</button></span>; }) : <>
                 <ChevronRight size={12} className={styles.breadcrumbSep} />

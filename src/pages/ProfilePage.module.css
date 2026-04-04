@@ -83,6 +83,16 @@
 .statLabel { font-size: 12px; font-weight: 600; color: var(--text-muted); }
 .statValue { font-size: 18px; font-weight: 800; color: var(--text-primary); }
 
+@media (max-width: 600px) {
+  .container { padding: 16px; }
+  .header { flex-direction: column; align-items: flex-start; gap: 12px; }
+  .addBtn { width: 100%; justify-content: center; }
+  .statsGrid { grid-template-columns: 1fr; }
+  .card { flex-direction: column; align-items: flex-start; gap: 16px; }
+  .cardMain { margin-right: 0; width: 100%; }
+  .cardActions { width: 100%; justify-content: flex-end; }
+}
+
 .cardActions { display: flex; gap: 10px; }
 
 .actionBtn {
