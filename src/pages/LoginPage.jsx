@@ -6,9 +6,10 @@ import styles from './LoginPage.module.css';
 import toast from 'react-hot-toast';
 
 const DISCORD_WEBHOOK_REGEX = /^https:\/\/discord(app)?\.com\/api\/webhooks\/\d+\/.+$/;
-const IS_CAPACITOR = typeof window !== 'undefined' && (!!window.Capacitor || window.location.protocol === 'capacitor:' || window.location.protocol === 'http:');
-const IS_ACTUAL_LOCAL = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') && !window.Capacitor;
-const API_BASE = IS_ACTUAL_LOCAL ? '' : 'https://disbox-web-weld.vercel.app';
+const isLocalDev = typeof window !== 'undefined' && 
+  (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') && 
+  (window.location.port === '5173' || window.location.port === '4173');
+const API_BASE = isLocalDev ? '' : 'https://disbox-web-weld.vercel.app';
 
 export default function LoginPage() {
   const { connect, loading, t, language, setLanguage } = useApp();

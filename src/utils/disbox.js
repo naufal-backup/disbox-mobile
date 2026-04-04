@@ -1,7 +1,9 @@
 // ─── Disbox API — Tidy JSONB Edition ─────────────────────────────────────────
 
-const IS_ACTUAL_LOCAL = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') && !window.Capacitor;
-export const BASE_API = IS_ACTUAL_LOCAL ? '' : 'https://disbox-web-weld.vercel.app';
+const isLocalDev = typeof window !== 'undefined' && 
+  (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') && 
+  (window.location.port === '5173' || window.location.port === '4173');
+export const BASE_API = isLocalDev ? '' : 'https://disbox-web-weld.vercel.app';
 
 const CHUNK_SIZE = 7.5 * 1024 * 1024;
 
