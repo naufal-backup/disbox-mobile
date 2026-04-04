@@ -95,6 +95,8 @@ fun MainNavigation(viewModel: DisboxViewModel, onFinish: () -> Unit) {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
     val context = LocalContext.current
+    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
     
     val musicPlayer = remember {
         ExoPlayer.Builder(context).build()
@@ -166,7 +168,9 @@ fun MainNavigation(viewModel: DisboxViewModel, onFinish: () -> Unit) {
     }
 
     BackHandler {
-        if (navController.previousBackStackEntry != null) {
+        if (drawerState.isOpen) {
+            scope.launch { drawerState.close() }
+        } else if (navController.previousBackStackEntry != null) {
             navController.popBackStack()
         } else if (viewModel.currentPath != "/") {
             val p = viewModel.currentPath.split("/").filter { it.isNotEmpty() }.dropLast(1).joinToString("/")
@@ -176,66 +180,54 @@ fun MainNavigation(viewModel: DisboxViewModel, onFinish: () -> Unit) {
         }
     }
 
-    Scaffold(
-        bottomBar = {
-            Column {
-                if (viewModel.currentPlayingFile != null) {
-                    MusicPlayerBar(musicPlayer, viewModel)
-                }
-                
-                if (viewModel.transferProgress.isNotEmpty()) {
-                    TransferPanel(viewModel.transferProgress, viewModel)
-                }
-
-                NavigationBar(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    tonalElevation = 8.dp
-                ) {
-                    val items = mutableListOf(
-                        Triple(Screen.Drive.route, "Drive", Icons.Default.Cloud),
-                        Triple(Screen.Starred.route, "Starred", Icons.Default.Star)
-                    )
-                    if (viewModel.showRecent) items.add(Triple(Screen.Recent.route, "Recent", Icons.Default.History))
-                    items.add(Triple(Screen.Locked.route, "Locked", Icons.Default.Lock))
-                    if (viewModel.cloudSaveEnabled) items.add(Triple(Screen.CloudSave.route, "Cloud", Icons.Default.Backup))
-                    if (viewModel.shareEnabled) items.add(Triple(Screen.Shared.route, "Shared", Icons.Default.Link))
-                    items.add(Triple(Screen.Settings.route, "Settings", Icons.Default.Settings))
-
-                    items.forEach { (route, label, icon) ->
-                        NavigationBarItem(
-                            icon = { Icon(icon, contentDescription = label) },
-                            label = { Text(label, style = MaterialTheme.typography.labelSmall) },
-                            selected = currentRoute == route,
-                            onClick = {
-                                if (currentRoute != route) {
-                                    navController.navigate(route) {
-                                        popUpTo(navController.graph.startDestinationId) { saveState = true }
-                                        launchSingleTop = true
-                                        restoreState = true
-                                    }
-                                }
-                            }
-                        )
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            Sidebar(
+                viewModel = viewModel,
+                currentRoute = currentRoute,
+                onNavigate = { route ->
+                    if (currentRoute != route) {
+                        navController.navigate(route) {
+                            popUpTo(navController.graph.startDestinationId) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    }
+                },
+                onClose = { scope.launch { drawerState.close() } }
+            )
+        }
+    ) {
+        Scaffold(
+            bottomBar = {
+                Column {
+                    if (viewModel.currentPlayingFile != null) {
+                        MusicPlayerBar(musicPlayer, viewModel)
+                    }
+                    
+                    if (viewModel.transferProgress.isNotEmpty()) {
+                        TransferPanel(viewModel.transferProgress, viewModel)
                     }
                 }
             }
-        }
-    ) { padding ->
-        NavHost(
-            navController = navController,
-            startDestination = Screen.Drive.route,
-            modifier = Modifier.padding(padding)
-        ) {
-            composable(Screen.Drive.route) { DriveScreen(viewModel) }
-            composable(Screen.Recent.route) { DriveScreen(viewModel, isRecentView = true) }
-            composable(Screen.Starred.route) { DriveScreen(viewModel, isStarredView = true) }
-            composable(Screen.Locked.route) {
-                if (viewModel.isVerified) DriveScreen(viewModel, isLockedView = true)
-                else LockedGateway(viewModel)
+        ) { padding ->
+            NavHost(
+                navController = navController,
+                startDestination = Screen.Drive.route,
+                modifier = Modifier.padding(padding)
+            ) {
+                composable(Screen.Drive.route) { DriveScreen(viewModel, onOpenDrawer = { scope.launch { drawerState.open() } }) }
+                composable(Screen.Recent.route) { DriveScreen(viewModel, isRecentView = true, onOpenDrawer = { scope.launch { drawerState.open() } }) }
+                composable(Screen.Starred.route) { DriveScreen(viewModel, isStarredView = true, onOpenDrawer = { scope.launch { drawerState.open() } }) }
+                composable(Screen.Locked.route) {
+                    if (viewModel.isVerified) DriveScreen(viewModel, isLockedView = true, onOpenDrawer = { scope.launch { drawerState.open() } })
+                    else LockedGateway(viewModel)
+                }
+                composable(Screen.CloudSave.route) { CloudSaveScreen(viewModel) }
+                composable(Screen.Shared.route) { SharedScreen(viewModel) }
+                composable(Screen.Settings.route) { SettingsScreen(viewModel) }
             }
-            composable(Screen.CloudSave.route) { CloudSaveScreen(viewModel) }
-            composable(Screen.Shared.route) { SharedScreen(viewModel) }
-            composable(Screen.Settings.route) { SettingsScreen(viewModel) }
         }
     }
 }

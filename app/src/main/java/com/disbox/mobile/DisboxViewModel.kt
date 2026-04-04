@@ -362,7 +362,11 @@ class DisboxViewModel(val app: Application) : AndroidViewModel(app) {
     }
 
     fun checkHasPin(onResult: (Boolean) -> Unit) {
-        viewModelScope.launch { onResult(repository.verifyPin("")) }
+        viewModelScope.launch { onResult(repository.hasPin()) }
+    }
+
+    fun setPin(pin: String?) {
+        viewModelScope.launch { repository.setPin(pin) }
     }
 
     fun verifyPin(pin: String, onResult: (Boolean) -> Unit) {

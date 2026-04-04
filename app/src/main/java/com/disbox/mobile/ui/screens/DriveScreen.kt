@@ -31,15 +31,23 @@ import com.disbox.mobile.utils.FileUtils
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DriveScreen(viewModel: DisboxViewModel, isLockedView: Boolean = false, isStarredView: Boolean = false, isRecentView: Boolean = false) {
+fun DriveScreen(
+    viewModel: DisboxViewModel,
+    isLockedView: Boolean = false,
+    isStarredView: Boolean = false,
+    isRecentView: Boolean = false,
+    onOpenDrawer: () -> Unit = {}
+) {
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
         if (uris.isNotEmpty()) viewModel.uploadFiles(uris)
     }
     var showCreateFolderDialog by remember { mutableStateOf(false) }
     var folderName by remember { mutableStateOf("") }
     var previewFile by remember { mutableStateOf<DisboxFile?>(null) }
+    var searchQuery by remember { mutableStateOf("") }
+    var isSearchActive by remember { mutableStateOf(false) }
     
-    val processed = remember(viewModel.allFiles.toList(), viewModel.currentPath, isLockedView, isStarredView, isRecentView, viewModel.sortMode) {
+    val processed = remember(viewModel.allFiles.toList(), viewModel.currentPath, isLockedView, isStarredView, isRecentView, viewModel.sortMode, searchQuery) {
         val fileList = mutableListOf<DisboxFile>()
         val folderList = mutableListOf<Pair<String, String>>()
         val dirPath = viewModel.currentPath.trim('/')
@@ -49,22 +57,25 @@ fun DriveScreen(viewModel: DisboxViewModel, isLockedView: Boolean = false, isSta
             if (parts.isEmpty()) continue
             val name = parts.last()
             
+            // Search filter
+            if (searchQuery.isNotEmpty() && !name.contains(searchQuery, ignoreCase = true)) continue
+
             // Special filtering for Starred/Locked/Recent views
             if (isStarredView && !f.isStarred) continue
             if (isLockedView && !f.isLocked) continue
-            if (!isLockedView && f.isLocked && !isStarredView) continue
+            if (!isLockedView && f.isLocked && !isStarredView && !isRecentView) continue
 
             val fDir = parts.dropLast(1).joinToString("/")
 
             if (name == ".keep") {
-                if (isStarredView || isRecentView || isLockedView) continue 
+                if (isStarredView || isRecentView || isLockedView || searchQuery.isNotEmpty()) continue 
                 val currentAcc = f.path.removeSuffix("/.keep")
                 val pParts = currentAcc.split("/").filter { s -> s.isNotEmpty() }
                 val parentPath = pParts.dropLast(1).joinToString("/")
                 val dirName = pParts.lastOrNull() ?: ""
                 if (parentPath == dirPath) folderList.add(dirName to currentAcc)
             } else {
-                if (isStarredView || isRecentView || isLockedView) {
+                if (isStarredView || isRecentView || isLockedView || searchQuery.isNotEmpty()) {
                     fileList.add(f)
                 } else if (fDir == dirPath) {
                     fileList.add(f)
@@ -86,29 +97,64 @@ fun DriveScreen(viewModel: DisboxViewModel, isLockedView: Boolean = false, isSta
     Scaffold(
         topBar = {
             Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp, top = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(modifier = Modifier.weight(1f)) {
-                        if (viewModel.selectionSet.isNotEmpty()) {
-                            Text("${viewModel.selectionSet.size} terpilih", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                        } else {
-                            val titleText = when {
-                                isStarredView -> viewModel.t("starred")
-                                isLockedView -> viewModel.t("locked")
-                                isRecentView -> viewModel.t("recent")
-                                else -> null
-                            }
-                            if (titleText != null) {
-                                Text(titleText, fontWeight = FontWeight.Bold, modifier = Modifier.padding(12.dp), color = MaterialTheme.colorScheme.primary)
+                if (isSearchActive) {
+                    SearchBar(
+                        query = searchQuery,
+                        onQueryChange = { searchQuery = it },
+                        onSearch = { /* Done via real-time filtering */ },
+                        active = true,
+                        onActiveChange = { isSearchActive = it },
+                        placeholder = { Text("Cari file...") },
+                        leadingIcon = { IconButton(onClick = { isSearchActive = false; searchQuery = "" }) { Icon(Icons.Default.ArrowBack, null) } },
+                        trailingIcon = { if (searchQuery.isNotEmpty()) IconButton(onClick = { searchQuery = "" }) { Icon(Icons.Default.Close, null) } },
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)
+                    ) {}
+                } else {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(start = 4.dp, end = 4.dp, top = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(onClick = onOpenDrawer) { Icon(Icons.Default.Menu, null) }
+                        
+                        Box(modifier = Modifier.weight(1f)) {
+                            if (viewModel.selectionSet.isNotEmpty()) {
+                                Text("${viewModel.selectionSet.size} terpilih", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                             } else {
-                                BreadcrumbBar(viewModel.currentPath) { viewModel.navigate(it) }
+                                val titleText = when {
+                                    isStarredView -> viewModel.t("starred")
+                                    isLockedView -> viewModel.t("locked")
+                                    isRecentView -> viewModel.t("recent")
+                                    else -> null
+                                }
+                                if (titleText != null) {
+                                    Text(titleText, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 8.dp), color = MaterialTheme.colorScheme.primary)
+                                } else {
+                                    BreadcrumbBar(viewModel.currentPath) { viewModel.navigate(it) }
+                                }
                             }
                         }
-                    }
-                    IconButton(onClick = { viewModel.setView(if (viewModel.viewMode == "grid") "list" else "grid") }) { 
-                        Icon(if (viewModel.viewMode == "grid") Icons.Default.List else Icons.Default.GridView, null) 
+                        
+                        IconButton(onClick = { isSearchActive = true }) { Icon(Icons.Default.Search, null) }
+                        
+                        var showMenu by remember { mutableStateOf(false) }
+                        Box {
+                            IconButton(onClick = { showMenu = true }) { Icon(Icons.Default.MoreVert, null) }
+                            DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                                DropdownMenuItem(
+                                    text = { Text(if (viewModel.viewMode == "grid") "Tampilan Daftar" else "Tampilan Kisi") },
+                                    leadingIcon = { Icon(if (viewModel.viewMode == "grid") Icons.Default.List else Icons.Default.GridView, null) },
+                                    onClick = { viewModel.setView(if (viewModel.viewMode == "grid") "list" else "grid"); showMenu = false }
+                                )
+                                HorizontalDivider()
+                                Text("Zoom", modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp), style = MaterialTheme.typography.labelSmall)
+                                Slider(
+                                    value = viewModel.zoomLevel,
+                                    onValueChange = { viewModel.zoomLevel = it },
+                                    valueRange = 0.6f..1.8f,
+                                    modifier = Modifier.width(160.dp).padding(horizontal = 16.dp)
+                                )
+                            }
+                        }
                     }
                 }
                 HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))

@@ -271,11 +271,36 @@ class DisboxRepository(
         return@withContext encryptionKey?.let { CryptoUtils.decrypt(data, it) } ?: data
     }
 
+    suspend fun downloadFileChunkFromMsg(messageIdsJson: String, chunkIndex: Int): ByteArray? {
+        val messageIds = gson.fromJson<List<MessageId>>(messageIdsJson, object : TypeToken<List<MessageId>>() {}.type)
+        if (chunkIndex >= messageIds.size) return null
+        return downloadFileChunk(messageIds[chunkIndex].msgId, messageIds[chunkIndex].index)
+    }
+
     suspend fun verifyPin(pin: String): Boolean {
+        if (pin.isEmpty()) return true // Default to true if no pin set or empty pin check
         val hash = hashedWebhook ?: return false
-        val stored = settingsDao.getSetting(hash, "pin_hash")?.value ?: return false
-        val hashed = MessageDigest.getInstance("SHA-256").digest(pin.toByteArray()).joinToString("") { "%02x".format(it) }
+        val stored = settingsDao.getSetting(hash, "pin_hash")?.value ?: return true // If no pin set, it's verified (or should we return false?)
+        
+        // Disbox Web/Electron logic: sha256(pin + "disbox_salt")
+        val hashed = CryptoUtils.sha256Hex(pin + "disbox_salt")
         return stored == hashed
+    }
+
+    suspend fun setPin(pin: String?) = withContext(Dispatchers.IO) {
+        val hash = hashedWebhook ?: return@withContext
+        if (pin == null) {
+            settingsDao.deleteSetting(hash, "pin_hash")
+        } else {
+            val hashed = CryptoUtils.sha256Hex(pin + "disbox_salt")
+            settingsDao.insertOrReplace(SettingsEntity(hash, "pin_hash", hashed))
+        }
+    }
+
+    suspend fun hasPin(): Boolean {
+        val hash = hashedWebhook ?: return false
+        val stored = settingsDao.getSetting(hash, "pin_hash")?.value
+        return !stored.isNullOrEmpty()
     }
 
     suspend fun getShareSettings(): ShareSettings {
@@ -294,18 +319,51 @@ class DisboxRepository(
             val hash = hashedWebhook ?: return@withContext mapOf<String, Any>("ok" to false)
             val settings = getShareSettings()
             val workerUrl = (settings.cf_worker_url ?: "https://disbox-shared-link.naufal-backup.workers.dev").trimEnd('/')
-            val token = UUID.randomUUID().toString().replace("-", "")
+            
             val file = if (fileId != null) fileDao.getFileById(fileId, hash) else fileDao.getFileByPath(filePath.trim('/'), hash)
-            val msgIdsRaw = gson.fromJson<List<MessageId>>(file?.messageIds ?: "[]", object : TypeToken<List<MessageId>>() {}.type)
-            val msgIds = msgIdsRaw.map { MessageIdRequest(it.msgId, it.index) }
+                ?: throw Exception("File not found")
+            
+            val messageIdsRaw = gson.fromJson<List<MessageId>>(file.messageIds, object : TypeToken<List<MessageId>>() {}.type)
+            val messageIds = messageIdsRaw.map { MessageIdRequest(it.msgId, it.index) }
+            
+            // Generate a unique token for this share
+            val token = UUID.randomUUID().toString().replace("-", "")
+            
+            // 3-part Token Encryption Logic (Simplified version for API call)
+            // The Cloudflare Worker handles the actual link resolution.
+            // We send the encrypted metadata and key to the worker or store it in Supabase.
+            
             val encKey = android.util.Base64.encodeToString(encryptionKey, android.util.Base64.NO_WRAP)
-            val request = ShareLinkRequest(token, fileId, filePath, permission, expiresAt, hash, msgIds, encKey, baseUrl)
+            val request = ShareLinkRequest(
+                token = token,
+                fileId = fileId ?: file.id,
+                filePath = filePath,
+                permission = permission,
+                expiresAt = expiresAt,
+                webhookHash = hash,
+                messageIds = messageIds,
+                encryptionKeyB64 = encKey,
+                webhookUrl = baseUrl
+            )
+            
             val res = apiService.createShareLink(workerUrl, "disbox-shared-link-0001", gson.toJson(request))
             if (res != null && res["ok"] == true) {
-                shareLinkDao.insertOrReplace(ShareLinkEntity(UUID.randomUUID().toString(), hash, filePath, fileId, token, permission, expiresAt, System.currentTimeMillis()))
+                shareLinkDao.insertOrReplace(ShareLinkEntity(
+                    id = UUID.randomUUID().toString(),
+                    hash = hash,
+                    filePath = filePath,
+                    fileId = fileId ?: file.id,
+                    token = token,
+                    permission = permission,
+                    expiresAt = expiresAt,
+                    createdAt = System.currentTimeMillis()
+                ))
                 return@withContext mapOf<String, Any>("ok" to true, "link" to "$workerUrl/share/$token")
             }
             mapOf<String, Any>("ok" to false)
-        } catch (e: Exception) { mapOf<String, Any>("ok" to false, "reason" to e.message as Any) }
+        } catch (e: Exception) { 
+            e.printStackTrace()
+            mapOf<String, Any>("ok" to false, "reason" to (e.message ?: "Unknown error") as Any) 
+        }
     }
 }

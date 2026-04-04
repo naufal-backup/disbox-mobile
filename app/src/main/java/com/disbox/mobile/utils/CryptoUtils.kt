@@ -1,15 +1,19 @@
 package com.disbox.mobile.utils
 
+import android.util.Log
 import java.security.MessageDigest
 import java.security.SecureRandom
 import javax.crypto.Cipher
 import javax.crypto.spec.GCMParameterSpec
+import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
 object CryptoUtils {
+    private const val TAG = "CryptoUtils"
     private const val MAGIC_HEADER = "DBX_ENC:"
-    private const val IV_LENGTH = 12
-    private const val TAG_LENGTH = 16 // bytes (128 bits)
+    private const val IV_LENGTH_GCM = 12
+    private const val IV_LENGTH_CBC = 16
+    private const val TAG_LENGTH_GCM = 16 // bytes (128 bits)
 
     fun normalizeUrl(url: String): String {
         var normalized = url.split("?")[0].trim().trimEnd('/')
@@ -20,19 +24,29 @@ object CryptoUtils {
         return normalized
     }
 
+    fun sha256(text: String): ByteArray {
+        val digest = MessageDigest.getInstance("SHA-256")
+        return digest.digest(text.toByteArray(Charsets.UTF_8))
+    }
+
+    fun sha256Hex(text: String): String {
+        return sha256(text).joinToString("") { "%02x".format(it) }
+    }
+
     fun deriveKey(webhookUrl: String): ByteArray {
         // Normalize the URL to be consistent with Desktop and DisboxApi
         val normalized = normalizeUrl(webhookUrl)
-        val digest = MessageDigest.getInstance("SHA-256")
-        return digest.digest(normalized.toByteArray(Charsets.UTF_8))
+        return sha256(normalized)
     }
 
-    fun encrypt(data: ByteArray, key: ByteArray): ByteArray {
-        val iv = ByteArray(IV_LENGTH)
+    // --- AES-GCM (Default for file chunks) ---
+
+    fun encryptGCM(data: ByteArray, key: ByteArray): ByteArray {
+        val iv = ByteArray(IV_LENGTH_GCM)
         SecureRandom().nextBytes(iv)
 
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        val spec = GCMParameterSpec(TAG_LENGTH * 8, iv)
+        val spec = GCMParameterSpec(TAG_LENGTH_GCM * 8, iv)
         cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(key, "AES"), spec)
 
         val encrypted = cipher.doFinal(data)
@@ -46,9 +60,9 @@ object CryptoUtils {
         return result
     }
 
-    fun decrypt(data: ByteArray, key: ByteArray): ByteArray {
+    fun decryptGCM(data: ByteArray, key: ByteArray): ByteArray {
         val magicBytes = MAGIC_HEADER.toByteArray(Charsets.UTF_8)
-        if (data.size < magicBytes.size + IV_LENGTH + TAG_LENGTH) return data
+        if (data.size < magicBytes.size + IV_LENGTH_GCM + TAG_LENGTH_GCM) return data
 
         // Check magic header for compatibility
         for (i in magicBytes.indices) {
@@ -59,16 +73,45 @@ object CryptoUtils {
         }
 
         try {
-            val iv = data.sliceArray(magicBytes.size until magicBytes.size + IV_LENGTH)
-            val ciphertext = data.sliceArray(magicBytes.size + IV_LENGTH until data.size)
+            val iv = data.sliceArray(magicBytes.size until magicBytes.size + IV_LENGTH_GCM)
+            val ciphertext = data.sliceArray(magicBytes.size + IV_LENGTH_GCM until data.size)
 
             val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-            val spec = GCMParameterSpec(TAG_LENGTH * 8, iv)
+            val spec = GCMParameterSpec(TAG_LENGTH_GCM * 8, iv)
             cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(key, "AES"), spec)
 
             return cipher.doFinal(ciphertext)
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(TAG, "GCM Decryption failed", e)
+            return data
+        }
+    }
+
+    // --- AES-CBC (Used for PIN or local data) ---
+
+    fun encryptCBC(data: ByteArray, key: ByteArray): ByteArray {
+        val iv = ByteArray(IV_LENGTH_CBC)
+        SecureRandom().nextBytes(iv)
+
+        val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
+        cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(key, "AES"), IvParameterSpec(iv))
+
+        val encrypted = cipher.doFinal(data)
+        return iv + encrypted
+    }
+
+    fun decryptCBC(data: ByteArray, key: ByteArray): ByteArray {
+        if (data.size < IV_LENGTH_CBC) return data
+        try {
+            val iv = data.sliceArray(0 until IV_LENGTH_CBC)
+            val ciphertext = data.sliceArray(IV_LENGTH_CBC until data.size)
+
+            val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
+            cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(key, "AES"), IvParameterSpec(iv))
+
+            return cipher.doFinal(ciphertext)
+        } catch (e: Exception) {
+            Log.e(TAG, "CBC Decryption failed", e)
             return data
         }
     }
