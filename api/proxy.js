@@ -1,3 +1,4 @@
+import { webcrypto as crypto } from 'node:crypto';
 import { verify as verifyJwt } from './_lib/jwt.js';
 import { handleCors } from './_lib/cors.js';
 
