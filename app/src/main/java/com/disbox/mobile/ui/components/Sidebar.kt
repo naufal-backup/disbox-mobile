@@ -59,25 +59,25 @@ fun Sidebar(
 
             // Navigation Items
             SidebarItem(
-                label = "Semua File",
+                label = viewModel.t("drive"),
                 icon = Icons.Default.Folder,
                 selected = currentRoute == Screen.Drive.route,
                 onClick = { onNavigate(Screen.Drive.route); onClose() }
             )
             SidebarItem(
-                label = "Favorit",
+                label = viewModel.t("starred"),
                 icon = Icons.Default.Star,
                 selected = currentRoute == Screen.Starred.route,
                 onClick = { onNavigate(Screen.Starred.route); onClose() }
             )
             SidebarItem(
-                label = "Terbaru",
+                label = viewModel.t("recent"),
                 icon = Icons.Default.History,
                 selected = currentRoute == Screen.Recent.route,
                 onClick = { onNavigate(Screen.Recent.route); onClose() }
             )
             SidebarItem(
-                label = "Terkunci",
+                label = viewModel.t("locked"),
                 icon = Icons.Default.Lock,
                 selected = currentRoute == Screen.Locked.route,
                 onClick = { onNavigate(Screen.Locked.route); onClose() }
@@ -87,7 +87,7 @@ fun Sidebar(
 
             if (viewModel.cloudSaveEnabled) {
                 SidebarItem(
-                    label = "Cloud Save",
+                    label = viewModel.t("cloud_save"),
                     icon = Icons.Default.Backup,
                     selected = currentRoute == Screen.CloudSave.route,
                     onClick = { onNavigate(Screen.CloudSave.route); onClose() }
@@ -95,7 +95,7 @@ fun Sidebar(
             }
 
             SidebarItem(
-                label = "Dibagikan",
+                label = viewModel.t("shared_by_me"),
                 icon = Icons.Default.Link,
                 selected = currentRoute == Screen.Shared.route,
                 onClick = { onNavigate(Screen.Shared.route); onClose() }
@@ -104,14 +104,14 @@ fun Sidebar(
             Spacer(Modifier.weight(1f))
 
             SidebarItem(
-                label = "Pengaturan",
+                label = viewModel.t("settings"),
                 icon = Icons.Default.Settings,
                 selected = currentRoute == Screen.Settings.route,
                 onClick = { onNavigate(Screen.Settings.route); onClose() }
             )
             
             SidebarItem(
-                label = "Keluar",
+                label = viewModel.t("disconnect"),
                 icon = Icons.Default.Logout,
                 selected = false,
                 onClick = { viewModel.disconnect(); onClose() }

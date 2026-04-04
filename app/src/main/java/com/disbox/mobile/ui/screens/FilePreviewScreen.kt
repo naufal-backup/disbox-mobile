@@ -70,7 +70,7 @@ fun FilePreviewScreen(
 
     Surface(
         modifier = Modifier.fillMaxSize(),
-        color = Color.Black
+        color = MaterialTheme.colorScheme.background
     ) {
         Box(Modifier.fillMaxSize()) {
             HorizontalPager(
@@ -90,19 +90,19 @@ fun FilePreviewScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(Color.Black.copy(alpha = 0.5f))
+                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.8f))
                     .padding(horizontal = 4.dp, vertical = 8.dp)
                     .align(Alignment.TopCenter),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 IconButton(onClick = onClose) {
-                    Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
+                    Icon(Icons.Default.Close, contentDescription = "Close", tint = MaterialTheme.colorScheme.onSurface)
                 }
                 Column(Modifier.weight(1f)) {
                     Text(
                         name,
                         fontWeight = FontWeight.Bold,
-                        color = Color.White,
+                        color = MaterialTheme.colorScheme.onSurface,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         fontSize = 14.sp
@@ -110,16 +110,16 @@ fun FilePreviewScreen(
                     Text(
                         formatSize(currentFile.size),
                         fontSize = 10.sp,
-                        color = Color.White.copy(alpha = 0.6f)
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                     )
                 }
                 if (viewModel.shareEnabled) {
                     IconButton(onClick = { showShareDialogByPreview = currentFile.path to currentFile.id }) {
-                        Icon(Icons.Default.Share, contentDescription = "Share", tint = Color.White, modifier = Modifier.size(20.dp))
+                        Icon(Icons.Default.Share, contentDescription = "Share", tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(20.dp))
                     }
                 }
                 IconButton(onClick = { viewModel.downloadFile(currentFile) }) {
-                    Icon(Icons.Default.Download, contentDescription = "Download", tint = Color.White, modifier = Modifier.size(20.dp))
+                    Icon(Icons.Default.Download, contentDescription = "Download", tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(20.dp))
                 }
             }
         }
@@ -236,13 +236,13 @@ fun MediaPreviewItem(file: DisboxFile, viewModel: DisboxViewModel, isActive: Boo
         when {
             isLoading -> {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    CircularProgressIndicator(color = Color.White)
+                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.height(16.dp))
-                    Text("Mengunduh...", fontSize = 12.sp, color = Color.White.copy(0.7f))
+                    Text(viewModel.t("downloading_preview"), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface.copy(0.7f))
                 }
             }
             errorMsg != null -> {
-                Text(errorMsg!!, color = Color.Red, modifier = Modifier.padding(16.dp))
+                Text(errorMsg!!, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(16.dp))
             }
             isMedia && exoPlayer != null -> {
                 VideoPlayer(exoPlayer!!, isFullscreen = true)
@@ -262,7 +262,7 @@ fun MediaPreviewItem(file: DisboxFile, viewModel: DisboxViewModel, isActive: Boo
                 Box(
                     Modifier
                         .fillMaxSize()
-                        .background(Color(0xFF1E1E1E))
+                        .background(if (viewModel.theme == "dark") Color(0xFF1E1E1E) else Color(0xFFF5F5F5))
                         .verticalScroll(rememberScrollState())
                         .padding(16.dp)
                 ) {
@@ -270,7 +270,7 @@ fun MediaPreviewItem(file: DisboxFile, viewModel: DisboxViewModel, isActive: Boo
                         previewText!!,
                         fontFamily = FontFamily.Monospace,
                         fontSize = 12.sp,
-                        color = Color.LightGray
+                        color = if (viewModel.theme == "dark") Color.LightGray else Color.DarkGray
                     )
                 }
             }
@@ -278,7 +278,7 @@ fun MediaPreviewItem(file: DisboxFile, viewModel: DisboxViewModel, isActive: Boo
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(getFileIcon(name), fontSize = 64.sp)
                     Spacer(Modifier.height(8.dp))
-                    Text("Pratinjau tidak tersedia", color = Color.White.copy(alpha = 0.6f))
+                    Text(viewModel.t("no_preview"), color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
                 }
             }
         }

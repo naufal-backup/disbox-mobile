@@ -46,6 +46,8 @@ fun DriveScreen(
     var previewFile by remember { mutableStateOf<DisboxFile?>(null) }
     var searchQuery by remember { mutableStateOf("") }
     var isSearchActive by remember { mutableStateOf(false) }
+    var showFileActions by remember { mutableStateOf<DisboxFile?>(null) }
+    val sheetState = rememberModalBottomSheetState()
     
     val processed = remember(viewModel.allFiles.toList(), viewModel.currentPath, isLockedView, isStarredView, isRecentView, viewModel.sortMode, searchQuery) {
         val fileList = mutableListOf<DisboxFile>()
@@ -104,7 +106,7 @@ fun DriveScreen(
                         onSearch = { /* Done via real-time filtering */ },
                         active = true,
                         onActiveChange = { isSearchActive = it },
-                        placeholder = { Text("Cari file...") },
+                        placeholder = { Text(viewModel.t("search")) },
                         leadingIcon = { IconButton(onClick = { isSearchActive = false; searchQuery = "" }) { Icon(Icons.Default.ArrowBack, null) } },
                         trailingIcon = { if (searchQuery.isNotEmpty()) IconButton(onClick = { searchQuery = "" }) { Icon(Icons.Default.Close, null) } },
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)
@@ -114,11 +116,11 @@ fun DriveScreen(
                         modifier = Modifier.fillMaxWidth().padding(start = 4.dp, end = 4.dp, top = 4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        IconButton(onClick = onOpenDrawer) { Icon(Icons.Default.Menu, null) }
+                        IconButton(onClick = onOpenDrawer) { Icon(Icons.Default.Menu, null, tint = MaterialTheme.colorScheme.onSurface) }
                         
                         Box(modifier = Modifier.weight(1f)) {
                             if (viewModel.selectionSet.isNotEmpty()) {
-                                Text("${viewModel.selectionSet.size} terpilih", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                Text("${viewModel.selectionSet.size} ${viewModel.t("terpilih")}", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                             } else {
                                 val titleText = when {
                                     isStarredView -> viewModel.t("starred")
@@ -127,26 +129,26 @@ fun DriveScreen(
                                     else -> null
                                 }
                                 if (titleText != null) {
-                                    Text(titleText, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 8.dp), color = MaterialTheme.colorScheme.primary)
+                                    Text(titleText, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 8.dp), color = MaterialTheme.colorScheme.onSurface)
                                 } else {
                                     BreadcrumbBar(viewModel.currentPath) { viewModel.navigate(it) }
                                 }
                             }
                         }
                         
-                        IconButton(onClick = { isSearchActive = true }) { Icon(Icons.Default.Search, null) }
+                        IconButton(onClick = { isSearchActive = true }) { Icon(Icons.Default.Search, null, tint = MaterialTheme.colorScheme.onSurface) }
                         
                         var showMenu by remember { mutableStateOf(false) }
                         Box {
-                            IconButton(onClick = { showMenu = true }) { Icon(Icons.Default.MoreVert, null) }
+                            IconButton(onClick = { showMenu = true }) { Icon(Icons.Default.MoreVert, null, tint = MaterialTheme.colorScheme.onSurface) }
                             DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
                                 DropdownMenuItem(
-                                    text = { Text(if (viewModel.viewMode == "grid") "Tampilan Daftar" else "Tampilan Kisi") },
+                                    text = { Text(if (viewModel.viewMode == "grid") viewModel.t("sort_name") else viewModel.t("sort_name")) /* Simplified */ },
                                     leadingIcon = { Icon(if (viewModel.viewMode == "grid") Icons.Default.List else Icons.Default.GridView, null) },
                                     onClick = { viewModel.setView(if (viewModel.viewMode == "grid") "list" else "grid"); showMenu = false }
                                 )
                                 HorizontalDivider()
-                                Text("Zoom", modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp), style = MaterialTheme.typography.labelSmall)
+                                Text("Zoom", modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 Slider(
                                     value = viewModel.zoomLevel,
                                     onValueChange = { viewModel.zoomLevel = it },
@@ -194,7 +196,11 @@ fun DriveScreen(
                             file = null, name = name, isFolder = true, size = 0, isSelected = viewModel.selectionSet.contains(path),
                             isSelectionMode = viewModel.selectionSet.isNotEmpty(), isLocked = false, isStarred = false, 
                             zoom = viewModel.zoomLevel, viewModel = viewModel,
-                            onLongClick = { viewModel.toggleSelection(path) },
+                            onLongClick = { 
+                                if (viewModel.selectionSet.isEmpty()) {
+                                    // Folder actions if needed
+                                } else viewModel.toggleSelection(path)
+                            },
                             onClick = { if (viewModel.selectionSet.isNotEmpty()) viewModel.toggleSelection(path) else viewModel.navigate("/$path") },
                             modifier = if (isOptimistic) Modifier.alpha(0.5f) else Modifier
                         )
@@ -204,7 +210,10 @@ fun DriveScreen(
                             file = f, name = f.path.split("/").last(), isFolder = false, size = f.size, 
                             isSelected = viewModel.selectionSet.contains(f.id), isSelectionMode = viewModel.selectionSet.isNotEmpty(), 
                             isLocked = f.isLocked, isStarred = f.isStarred, zoom = viewModel.zoomLevel, viewModel = viewModel,
-                            onLongClick = { viewModel.toggleSelection(f.id) },
+                            onLongClick = { 
+                                if (viewModel.selectionSet.isEmpty()) showFileActions = f
+                                else viewModel.toggleSelection(f.id)
+                            },
                             onClick = {
                                 if (viewModel.selectionSet.isNotEmpty()) viewModel.toggleSelection(f.id)
                                 else if (com.disbox.mobile.utils.isAudioFile(f.path)) viewModel.currentPlayingFile = f else previewFile = f
@@ -221,7 +230,11 @@ fun DriveScreen(
                             file = null, name = name, isFolder = true, size = 0, isSelected = viewModel.selectionSet.contains(path), 
                             isSelectionMode = viewModel.selectionSet.isNotEmpty(), isLocked = false, isStarred = false, 
                             zoom = viewModel.zoomLevel, viewModel = viewModel,
-                            onLongClick = { viewModel.toggleSelection(path) },
+                            onLongClick = { 
+                                if (viewModel.selectionSet.isEmpty()) {
+                                    // Folder actions
+                                } else viewModel.toggleSelection(path)
+                            },
                             onClick = { if (viewModel.selectionSet.isNotEmpty()) viewModel.toggleSelection(path) else viewModel.navigate("/$path") },
                             modifier = if (isOptimistic) Modifier.alpha(0.5f) else Modifier
                         )
@@ -231,7 +244,10 @@ fun DriveScreen(
                             file = f, name = f.path.split("/").last(), isFolder = false, size = f.size, 
                             isSelected = viewModel.selectionSet.contains(f.id), isSelectionMode = viewModel.selectionSet.isNotEmpty(), 
                             isLocked = f.isLocked, isStarred = f.isStarred, zoom = viewModel.zoomLevel, viewModel = viewModel,
-                            onLongClick = { viewModel.toggleSelection(f.id) },
+                            onLongClick = { 
+                                if (viewModel.selectionSet.isEmpty()) showFileActions = f
+                                else viewModel.toggleSelection(f.id)
+                            },
                             onClick = {
                                 if (viewModel.selectionSet.isNotEmpty()) viewModel.toggleSelection(f.id)
                                 else if (com.disbox.mobile.utils.isAudioFile(f.path)) viewModel.currentPlayingFile = f else previewFile = f
@@ -240,6 +256,60 @@ fun DriveScreen(
                         )
                     }
                 }
+            }
+        }
+    }
+
+    if (showFileActions != null) {
+        val file = showFileActions!!
+        ModalBottomSheet(
+            onDismissRequest = { showFileActions = null },
+            sheetState = sheetState,
+            containerColor = MaterialTheme.colorScheme.surface,
+            contentColor = MaterialTheme.colorScheme.onSurface,
+            dragHandle = { BottomSheetDefaults.DragHandle(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)) }
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 32.dp, start = 16.dp, end = 16.dp)
+            ) {
+                Text(
+                    text = file.path.split("/").last(),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(16.dp),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                
+                ListItem(
+                    headlineContent = { Text(viewModel.t("download")) },
+                    leadingContent = { Icon(Icons.Default.Download, null) },
+                    modifier = Modifier.clickable { viewModel.downloadFile(file); showFileActions = null }
+                )
+                ListItem(
+                    headlineContent = { Text(if (file.isStarred) viewModel.t("unstar") else viewModel.t("star")) },
+                    leadingContent = { Icon(if (file.isStarred) Icons.Default.StarOutline else Icons.Default.Star, null) },
+                    modifier = Modifier.clickable { viewModel.toggleBulkStatus(listOf(file.id), isStarred = !file.isStarred); showFileActions = null }
+                )
+                ListItem(
+                    headlineContent = { Text(if (file.isLocked) viewModel.t("unlock") else viewModel.t("lock")) },
+                    leadingContent = { Icon(if (file.isLocked) Icons.Default.LockOpen else Icons.Default.Lock, null) },
+                    modifier = Modifier.clickable { 
+                        viewModel.toggleBulkStatus(listOf(file.id), isLocked = !file.isLocked)
+                        showFileActions = null 
+                    }
+                )
+                ListItem(
+                    headlineContent = { Text(viewModel.t("rename")) },
+                    leadingContent = { Icon(Icons.Default.Edit, null) },
+                    modifier = Modifier.clickable { showFileActions = null }
+                )
+                ListItem(
+                    headlineContent = { Text(viewModel.t("delete"), color = MaterialTheme.colorScheme.error) },
+                    leadingContent = { Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error) },
+                    modifier = Modifier.clickable { viewModel.deleteItems(listOf(file.id)); showFileActions = null }
+                )
             }
         }
     }
