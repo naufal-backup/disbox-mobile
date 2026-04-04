@@ -196,10 +196,6 @@ function AppInner() {
     return <AppLockGateway onUnlocked={() => setIsAppUnlocked(true)} />;
   }
 
-  const showSplash = autoConnecting || isConnecting || loading;
-  const showDrive = isConnected && !showSplash;
-  const showLogin = !isConnected && !showSplash;
-
   return (
     <div className={styles.app}>
       <Toaster
@@ -215,13 +211,13 @@ function AppInner() {
         }}
       />
       <div className={styles.body}>
-        {showSplash ? (
+        {(autoConnecting || isConnecting) ? (
           <div className={styles.splash}>
             <div className={styles.splashIcon}>
               <Hexagon size={48} className="spin-slow" style={{ color: 'var(--accent)' }} />
             </div>
             <p className={styles.splashText}>
-              {isConnecting ? 'Switching drive...' : 'Connecting to drive...'}
+              {isConnecting ? 'Switching drive...' : 'Reconnecting to drive...'}
             </p>
             <button 
               className={styles.cancelAutoBtn}
@@ -233,7 +229,7 @@ function AppInner() {
               {t('cancel')}
             </button>
           </div>
-        ) : showDrive ? (
+        ) : isConnected ? (
           <DrivePage activePage={activePage} onNavigate={setActivePage} />
         ) : (
           <LoginPage />
