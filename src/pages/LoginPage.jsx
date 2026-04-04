@@ -46,6 +46,8 @@ export default function LoginPage() {
       const authData = await authRes.json().catch(() => ({ error: 'Invalid server response' }));
       if (!authData.ok) throw new Error(authData.error || t('error_connect_fail'));
 
+      if (authData.token) localStorage.setItem('disbox_auth_token', authData.token);
+
       const result = await connect(url.trim(), { metadataUrl: metadataUrl.trim() });
       if (!result.ok) throw new Error(result.message || t('error_connect_fail'));
     } catch (e) {
@@ -76,6 +78,7 @@ export default function LoginPage() {
       }
 
       localStorage.setItem('dbx_username', data.username);
+      if (data.token) localStorage.setItem('disbox_auth_token', data.token);
 
       const result = await connect(data.webhook_url, {
         forceId: data.last_msg_id,

@@ -67,7 +67,12 @@ export default async function handler(req, res) {
       const token = sign({ identifier: targetId, mode: 'cloud' });
       setSessionCookie(res, token);
 
-      return res.status(200).json({ ok: true, username: user.username, webhook_url: webhook });
+      return res.status(200).json({ 
+        ok: true, 
+        username: user.username, 
+        webhook_url: webhook,
+        token: token
+      });
     } catch (e) { return res.status(500).json({ error: e.message }); }
   }
 
