@@ -314,6 +314,25 @@ class DisboxViewModel(val app: Application) : AndroidViewModel(app) {
         }
     }
 
+    fun downloadFilePartial(file: DisboxFile, dest: File, startChunk: Int, endChunk: Int, onResult: (Boolean) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val out = java.io.FileOutputStream(dest)
+                out.use { stream ->
+                    val actualEnd = endChunk.coerceAtMost(file.messageIds.size - 1)
+                    for (i in startChunk..actualEnd) {
+                        val data = repository.downloadFileChunk(file.messageIds[i].msgId, file.messageIds[i].index) ?: throw Exception("Chunk failed")
+                        stream.write(data)
+                    }
+                }
+                onResult(true)
+            } catch (e: Exception) {
+                e.printStackTrace()
+                onResult(false)
+            }
+        }
+    }
+
     // --- SHARING ---
     fun loadShareLinks() {
         viewModelScope.launch {

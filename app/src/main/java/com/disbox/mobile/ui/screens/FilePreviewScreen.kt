@@ -182,12 +182,31 @@ fun MediaPreviewItem(file: DisboxFile, viewModel: DisboxViewModel, isActive: Boo
                 val player = exoPlayer ?: return@LaunchedEffect
                 val api = viewModel.repository
                 val dataSourceFactory = DiscordDataSourceFactory(api, file)
+
+                val mimeType = when(ext) {
+                    "mp3" -> "audio/mpeg"
+                    "wav" -> "audio/wav"
+                    "flac" -> "audio/flac"
+                    "ogg" -> "audio/ogg"
+                    "m4a" -> "audio/mp4"
+                    "mp4" -> "video/mp4"
+                    "mkv" -> "video/x-matroska"
+                    "webm" -> "video/webm"
+                    else -> null
+                }
+
+                val mediaItem = androidx.media3.common.MediaItem.Builder()
+                    .setUri("disbox-stream://${file.id}.$ext")
+                    .setMimeType(mimeType)
+                    .build()
+
                 val mediaSource = androidx.media3.exoplayer.source.ProgressiveMediaSource.Factory(dataSourceFactory)
-                    .createMediaSource(MediaItem.fromUri("disbox-stream://${file.id}.$ext"))
+                    .createMediaSource(mediaItem)
                 player.setMediaSource(mediaSource)
                 player.prepare()
                 player.playWhenReady = true
-            } else if (isImage || isText) {
+            }
+ else if (isImage || isText) {
                 val cacheKey = "prev_${file.id}_${file.size}"
                 val tempFile = File(context.cacheDir, cacheKey)
                 

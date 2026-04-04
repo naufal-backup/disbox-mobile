@@ -68,7 +68,7 @@ fun FileThumbnail(file: DisboxFile, viewModel: DisboxViewModel, modifier: Modifi
         }
         isLoading = true
         try {
-            viewModel.downloadFileToCache(file, targetFile) { success ->
+            viewModel.downloadFilePartial(file, targetFile, 0, 0) { success ->
                 if (success && targetFile.exists()) {
                     thumbFile = targetFile
                     if (isAudio) {
