@@ -10,7 +10,7 @@ export default function TransferPanel({ activePage }) {
   const { 
     transfers, removeTransfer, cancelTransfer, 
     autoCloseTransfers, metadataStatus, t,
-    currentTrack
+    currentTrack, hideSyncOverlay
   } = useApp();
   const [collapsed, setCollapsed] = useState(false);
 
@@ -85,4 +85,6 @@ export default function TransferPanel({ activePage }) {
       )}
     </>
   );
+}
+
 }

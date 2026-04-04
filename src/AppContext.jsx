@@ -710,6 +710,7 @@ export function AppProvider({ children }) {
       animationsEnabled, setAnimationsEnabled,
       metadataStatus,
       closeToTray, startMinimized, chunksPerMessage, updatePrefs,
+      hideSyncOverlay, setHideSyncOverlay,
       isVerified, setIsVerified,
       appLockEnabled, setAppLockEnabled,
       appLockPin, setAppLockPin,
@@ -733,6 +734,13 @@ export function AppProvider({ children }) {
       pendingOperations, addPendingItem, updatePendingProgress, unmarkPending,
       updateWebhookLabel: handleUpdateLabel,
       removeWebhook: handleRemoveWebhook,
+      addWebhook: handleAddWebhook,
+    }}>
+      {children}
+    </AppContext.Provider>
+  );
+}
+hook: handleRemoveWebhook,
       addWebhook: handleAddWebhook,
     }}>
       {children}

@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Disbox</string>
+    <string name="title_activity_main">Disbox</string>
+    <string name="package_name">com.disbox.app</string>
+    <string name="custom_url_scheme">com.disbox.app</string>
+</resources>
