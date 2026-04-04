@@ -463,11 +463,3 @@ function CloudSaveSection() {
     </div>
   );
 }
-s: 'center', gap: '6px' }}>
-            <AlertCircle size={14} /> {status.msg}
-          </div>
-        )}
-      </form>
-    </div>
-  );
-}
