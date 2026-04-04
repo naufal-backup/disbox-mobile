@@ -21,15 +21,12 @@ const ALLOWED_ORIGINS = (() => {
  */
 export function handleCors(req, res) {
   const origin = req.headers['origin'] || '';
-  const isAllowed = ALLOWED_ORIGINS.length === 0 || ALLOWED_ORIGINS.includes(origin);
+  const isVercel = origin.includes('.vercel.app');
+  const isAllowed = ALLOWED_ORIGINS.length === 0 || ALLOWED_ORIGINS.includes(origin) || isVercel || origin.includes('localhost:');
 
   // Always set CORS headers for allowed origin
-  if (isAllowed) {
+  if (isAllowed && origin) {
     res.setHeader('Access-Control-Allow-Origin', origin);
-  } else {
-    // For non-allowed, don't set Allow-Origin (browser will block)
-    // But still allow preflight to complete with 400/401 if needed
-    res.setHeader('Access-Control-Allow-Origin', 'null');
   }
 
   res.setHeader('Access-Control-Allow-Credentials', 'true');

@@ -87,10 +87,8 @@ export default async function handler(req, res) {
   }
 
   const origin = req.headers['origin'] || req.headers['referer'] || '';
-  const isOriginAllowed = 
-    ALLOWED_ORIGINS.some(o => origin.startsWith(o)) || 
-    origin.endsWith('.vercel.app') ||
-    origin.includes('localhost:');
+  const isVercel = origin.includes('.vercel.app');
+  const isOriginAllowed = !origin || ALLOWED_ORIGINS.some(o => origin.startsWith(o)) || isVercel || origin.includes('localhost:');
 
   if (isSessionValid && !isOriginAllowed && ALLOWED_ORIGINS.length > 0) {
     return res.status(403).json({ error: 'Forbidden origin' });
