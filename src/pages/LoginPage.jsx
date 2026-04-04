@@ -67,7 +67,7 @@ export default function LoginPage() {
         body: JSON.stringify({ username: username.trim(), password })
       });
       
-      const data = await res.json().catch(() => ({ error: 'Format response server tidak valid' }));
+      const data = await res.json().catch(() => ({ error: 'Respon server tidak valid (bukan JSON)' }));
 
       if (!data.ok) {
         setError(data.error || 'Login gagal');
@@ -84,7 +84,7 @@ export default function LoginPage() {
 
     } catch (e) {
       console.error('Login error:', e);
-      setError(e.message || 'Terjadi kesalahan server.');
+      setError(`Kesalahan: ${e.message}`);
     }
   };
 

@@ -211,13 +211,13 @@ function AppInner() {
         }}
       />
       <div className={styles.body}>
-        {(autoConnecting || isConnecting) ? (
+        {autoConnecting ? (
           <div className={styles.splash}>
             <div className={styles.splashIcon}>
               <Hexagon size={48} className="spin-slow" style={{ color: 'var(--accent)' }} />
             </div>
             <p className={styles.splashText}>
-              {isConnecting ? 'Switching drive...' : 'Reconnecting to drive...'}
+              Reconnecting to drive...
             </p>
             <button 
               className={styles.cancelAutoBtn}
