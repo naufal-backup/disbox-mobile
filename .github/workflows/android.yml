@@ -41,6 +41,22 @@ jobs:
         npx cap add android || true
         npx cap sync android
 
+    - name: Generate Release Keystore
+      run: |
+        keytool -genkey -v \
+          -keystore disbox-release.keystore \
+          -alias disbox \
+          -keyalg RSA \
+          -keysize 2048 \
+          -validity 10000 \
+          -storepass disbox123 \
+          -keypass disbox123 \
+          -dname "CN=Disbox, OU=Mobile, O=Disbox, L=Unknown, ST=Unknown, C=US"
+        echo "KEYSTORE_PATH=$(pwd)/disbox-release.keystore" >> $GITHUB_ENV
+        echo "KEYSTORE_PASSWORD=disbox123" >> $GITHUB_ENV
+        echo "KEY_ALIAS=disbox" >> $GITHUB_ENV
+        echo "KEY_PASSWORD=disbox123" >> $GITHUB_ENV
+
     - name: Grant execute permission for gradlew
       run: chmod +x android/gradlew
 
@@ -52,6 +68,15 @@ jobs:
       if: startsWith(github.ref, 'refs/tags/v')
       run: |
         cd android && ./gradlew bundleRelease
+
+    - name: Rename APK
+      run: |
+        cd android/app/build/outputs/apk/release
+        # rename unsigned or signed apk to a friendly name
+        for f in *.apk; do
+          mv "$f" "disbox-${f}"
+        done
+        ls -la
 
     - name: Upload APK Artifact
       uses: actions/upload-artifact@v4
