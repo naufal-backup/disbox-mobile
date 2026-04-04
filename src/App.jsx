@@ -13,6 +13,7 @@ import PasswordInput from './components/PasswordInput.jsx';
 import styles from './App.module.css';
 
 import { motion, AnimatePresence } from 'framer-motion';
+import { App as CapApp } from '@capacitor/app';
 
 function AppLockGateway({ onUnlocked }) {
   const { appLockPin, t, animationsEnabled } = useApp();
@@ -123,6 +124,22 @@ function AppInner() {
   } = useApp();
   const [activePage, setActivePage] = useState('drive');
   const [autoConnecting, setAutoConnecting] = useState(false);
+
+  useEffect(() => {
+    const handleBackButton = async () => {
+      if (activePage !== 'drive') {
+        setActivePage('drive');
+      } else {
+        // Jika sudah di drive, biarkan sistem yang handle (biasanya exit app atau background)
+        CapApp.exitApp();
+      }
+    };
+
+    const backListener = CapApp.addListener('backButton', handleBackButton);
+    return () => {
+      backListener.then(l => l.remove());
+    };
+  }, [activePage]);
 
   const handleNext = (shuffle = false) => {
     if (!playlist.length || !currentTrack) return;

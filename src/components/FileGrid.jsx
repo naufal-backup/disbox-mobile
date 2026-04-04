@@ -65,6 +65,7 @@ export default function FileGrid({ isLockedView = false, isStarredView = false, 
   const [showBreadcrumbMenu, setShowBreadcrumbMenu] = useState(false);
   const [shareDialog, setShareDialog] = useState(null);
   const [showSortMenu, setShowSortMenu] = useState(false);
+  const [showZoomMenu, setShowZoomMenu] = useState(false);
   const [isLastPartTruncated, setIsLastPartTruncated] = useState(false);
   const activeFolderRef = useRef(null);
   const contextMenuRef = useRef(null);
@@ -496,7 +497,10 @@ const handleBulkDelete = async () => {
             {showSortMenu && (<><div className={styles.menuBackdrop} onClick={(e) => { e.stopPropagation(); setShowSortMenu(false); }} /><div className={styles.sortMenu}><button className={`${styles.sortMenuItem} ${sortMode === 'name' ? styles.active : ''}`} onClick={() => { setSortMode('name'); setShowSortMenu(false); }}><div className={styles.checkIcon}>{sortMode === 'name' && <Check size={12} />}</div>{t('sort_name')}</button><button className={`${styles.sortMenuItem} ${sortMode === 'date' ? styles.active : ''}`} onClick={() => { setSortMode('date'); setShowSortMenu(false); }}><div className={styles.checkIcon}>{sortMode === 'date' && <Check size={12} />}</div>{t('sort_date')}</button><button className={`${styles.sortMenuItem} ${sortMode === 'size' ? styles.active : ''}`} onClick={() => { setSortMode('size'); setShowSortMenu(false); }}><div className={styles.checkIcon}>{sortMode === 'size' && <Check size={12} />}</div>{t('sort_size')}</button></div></>)}
           </div>
           <div className={styles.viewToggle}><button className={`${styles.viewBtn} ${viewMode === 'grid' ? styles.viewActive : ''}`} onClick={() => setViewMode('grid')}><Grid3x3 size={13} /></button><button className={`${styles.viewBtn} ${viewMode === 'list' ? styles.viewActive : ''}`} onClick={() => setViewMode('list')}><List size={13} /></button></div>
-          <div className={styles.zoomBox}><ZoomIn size={13} /><input type="range" min="0.6" max="1.8" step="0.1" value={zoom} onChange={e => setZoom(parseFloat(e.target.value))} className={styles.zoomSlider} /></div>
+          <div className={styles.zoomBoxContainer}>
+            <button className={styles.zoomBtn} onClick={(e) => { e.stopPropagation(); setShowZoomMenu(!showZoomMenu); }}><ZoomIn size={13} /></button>
+            {showZoomMenu && (<><div className={styles.menuBackdrop} onClick={(e) => { e.stopPropagation(); setShowZoomMenu(false); }} /><div className={styles.zoomMenu}><div className={styles.zoomMenuLabel}>Grid Size</div><input type="range" min="0.6" max="1.8" step="0.1" value={zoom} onChange={e => setZoom(parseFloat(e.target.value))} className={styles.zoomSlider} /></div></>)}
+          </div>
           <button className={styles.folderBtn} onClick={() => setShowCreateFolder(true)} title={t('new_folder')}><FolderPlus size={14} /></button>
           <button className={styles.uploadBtn} onClick={handlePickFiles} disabled={uploading}><Upload size={14} /><span>{uploading ? 'Uploading…' : t('upload')}</span></button>
         </div>
