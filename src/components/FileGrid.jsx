@@ -172,7 +172,9 @@ export default function FileGrid({ isLockedView = false, isStarredView = false, 
       const matchesSearch = !q || name.toLowerCase().includes(q);
       let includeBasedOnView = false;
       if (isLockedView) {
-        includeBasedOnView = item.isLocked;
+        const fileDirStr = parts.slice(0, -1).join('/');
+        const isDirectChild = fileDirStr === dirPath;
+        includeBasedOnView = item.isLocked || (dirPath !== '' && isDirectChild);
       } else if (isStarredView) {
         includeBasedOnView = item.isStarred;
       } else if (isRecentView) {
