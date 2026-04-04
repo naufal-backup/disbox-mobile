@@ -199,7 +199,7 @@ export default function FileGrid({ isLockedView = false, isStarredView = false, 
           }
         }
 
-        if (!shouldHideBecauseParentLocked && (q || isStarredView || isRecentView || isLockedView || isDirectChild)) {
+        if (!shouldHideBecauseParentLocked && (q || isStarredView || isRecentView || (isLockedView && isDirectChild) || isDirectChild)) {
           fileList.push(item);
         }
       }
@@ -238,7 +238,7 @@ export default function FileGrid({ isLockedView = false, isStarredView = false, 
           }
         }
 
-        if (includeDirBasedOnView && !shouldHideDirBecauseParentLocked && (q ? dirName.toLowerCase().includes(q) : (isStarredView || isLockedView || isChildOfCurrent))) {
+        if (includeDirBasedOnView && !shouldHideDirBecauseParentLocked && (q ? dirName.toLowerCase().includes(q) : (isStarredView || (isLockedView && isChildOfCurrent) || isChildOfCurrent))) {
           dirsMap.set(currentAcc, dirName);
         }
       }
@@ -286,7 +286,7 @@ export default function FileGrid({ isLockedView = false, isStarredView = false, 
   const handleFolderClick = (fullPath) => {
     const l = folderLocks.get(fullPath);
     const isLocked = l && l.count > 0 && l.lockedCount === l.count;
-    const performNavigate = () => { if (isStarredView || isRecentView) onNavigate?.('drive'); navigate('/' + fullPath); };
+    const performNavigate = () => { navigate('/' + fullPath); };
     if (isLocked && !isVerified) setPinPrompt({ title: 'Buka Folder Terkunci', onSuccess: performNavigate });
     else performNavigate();
   };
