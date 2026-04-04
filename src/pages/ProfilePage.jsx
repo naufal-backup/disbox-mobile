@@ -441,14 +441,8 @@ function CloudSaveSection() {
       </p>
       <form onSubmit={currentAccount ? handleUpdate : handleRegister} className={styles.cloudForm}>
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-          <input 
-            type="text" placeholder={t('username')} className={styles.input} style={{ flex: 1, minWidth: '150px' }}
-            value={username} onChange={e => setUsername(e.target.value)} required={!currentAccount}
-          />
-          <input 
-            type="password" placeholder={currentAccount ? t('new_password_optional') : t('password')} className={styles.input} style={{ flex: 1, minWidth: '150px' }}
-            value={password} onChange={e => setPassword(e.target.value)} required={!currentAccount}
-          />
+          <input type="text" placeholder={t('username')} className={styles.input} style={{ flex: 1, minWidth: '150px' }} value={username} onChange={e => setUsername(e.target.value)} required={!currentAccount} />
+          <PasswordInput placeholder={currentAccount ? t('new_password_optional') : t('password')} className={styles.input} style={{ flex: 1, minWidth: '150px' }} value={password} onChange={e => setPassword(e.target.value)} required={!currentAccount} />
           <div style={{ display: 'flex', gap: '8px' }}>
             <button className={styles.saveBtn} disabled={busy} style={{ background: 'var(--accent)', color: 'white', border: 'none', borderRadius: '6px', padding: '0 16px', fontWeight: '600', cursor: 'pointer' }}>
               {busy ? '...' : (currentAccount ? t('save') : t('register'))}
@@ -462,6 +456,14 @@ function CloudSaveSection() {
         </div>
         {status && (
           <div style={{ marginTop: '10px', fontSize: '12px', color: status.type === 'success' ? '#10b981' : '#ef4444', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <AlertCircle size={14} /> {status.msg}
+          </div>
+        )}
+      </form>
+    </div>
+  );
+}
+s: 'center', gap: '6px' }}>
             <AlertCircle size={14} /> {status.msg}
           </div>
         )}

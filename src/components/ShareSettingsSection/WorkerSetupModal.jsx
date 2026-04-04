@@ -78,9 +78,8 @@ export default function WorkerSetupModal({
               <div style={{ width: 20, height: 20, borderRadius: '50%', background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, color: 'white', flexShrink: 0 }}>3</div>
               <p style={{ fontSize: 12, fontWeight: 600 }}>Paste Token & Deploy</p>
             </div>
-            <input
-              type="password"
-              placeholder="Paste API token di sini..."
+            <PasswordInput
+              placeholder={t('api_token_placeholder')}
               value={apiToken}
               onChange={e => setApiToken(e.target.value)}
               style={{ width: '100%', padding: '10px 12px', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-primary)', fontSize: 12, outline: 'none' }}
@@ -107,6 +106,12 @@ export default function WorkerSetupModal({
           >
             {deploying ? 'Deploying...' : 'Deploy'}
           </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+  </button>
         </div>
       </motion.div>
     </motion.div>

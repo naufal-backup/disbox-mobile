@@ -3,6 +3,7 @@ import { Shield } from 'lucide-react';
 import { useApp } from '../../context/useAppHook.js';
 import toast from 'react-hot-toast';
 import { motion } from 'framer-motion';
+import PasswordInput from '../../components/PasswordInput.jsx';
 import styles from '../DrivePage.module.css';
 
 export default function AppLockSettingsModal({ mode, onClose }) {
@@ -70,20 +71,20 @@ export default function AppLockSettingsModal({ mode, onClose }) {
         </div>
         <form onSubmit={step === 'verify' ? handleVerify : handleSetNew}>
           {step === 'verify' ? (
-            <input
-              type="password" placeholder={t('pin_current_placeholder')}
+            <PasswordInput
+              placeholder={t('pin_current_placeholder')}
               value={currentPin} onChange={e => setCurrentPin(e.target.value)}
               autoFocus style={{ ...inputStyle, marginBottom: 12 }}
             />
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 12 }}>
-              <input
-                type="password" placeholder={t('app_lock_placeholder')}
+              <PasswordInput
+                placeholder={t('app_lock_placeholder')}
                 value={newPin} onChange={e => setNewPin(e.target.value)}
                 autoFocus style={inputStyle}
               />
-              <input
-                type="password" placeholder={t('pin_confirm_placeholder')}
+              <PasswordInput
+                placeholder={t('pin_confirm_placeholder')}
                 value={confirmPin} onChange={e => setConfirmPin(e.target.value)}
                 style={inputStyle}
               />
