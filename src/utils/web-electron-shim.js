@@ -192,21 +192,29 @@ export const webElectronShim = {
   },
 
   statFile:   async (file) => ({ size: file.size || 0, name: file.name || 'unknown' }),
-  getVersion: async () => '3.6.0-web',
+  getVersion: async () => '3.6.1-web',
   confirm:    async ({ title, message }) => window.confirm(`${title}\n\n${message}`),
-
-  getPrefs: async () => {
-    const match = document.cookie.match(new RegExp('(^| )disbox_prefs=([^;]+)'));
-    try { 
-      return match ? JSON.parse(decodeURIComponent(atob(match[2]).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''))) : {}; 
-    } catch { return {}; }
+  openPath:   async (path) => { console.warn('openPath not supported on web'); return false; },
+  shell: {
+    openExternal: async (url) => window.open(url, '_blank'),
   },
-
+  shareOpenCFTokenPage: async () => {
+    window.open('https://dash.cloudflare.com/profile/api-tokens/create?permissionGroupKeys=workers_scripts:edit,workers_kv_storage:edit,account_settings:read&name=Disbox+Worker', '_blank');
+    return true;
+  },
   setPrefs: async (prefs) => {
-    const current = await webElectronShim.getPrefs();
-    const data = btoa(encodeURIComponent(JSON.stringify({ ...current, ...prefs })).replace(/%([0-9A-F]{2})/g, (m, p) => String.fromCharCode('0x' + p)));
-    document.cookie = `disbox_prefs=${data}; path=/; max-age=31536000; SameSite=Lax`;
-    return prefs;
+    try {
+      const current = await webElectronShim.getPrefs();
+      const updated = { ...current, ...prefs };
+      localStorage.setItem('disbox_prefs', JSON.stringify(updated));
+      return updated;
+    } catch { return prefs; }
+  },
+  getPrefs: async () => {
+    try {
+      const saved = localStorage.getItem('disbox_prefs');
+      return saved ? JSON.parse(saved) : {};
+    } catch { return {}; }
   },
 
   loadMetadata: async (hash) => {
@@ -414,7 +422,6 @@ export const webElectronShim = {
     }
   },
 
-  // Cloud Save (disabled on web)
   cloudsaveGetAll:      async () => [],
   cloudsaveAdd:         async () => null,
   cloudsaveUpdate:      async () => false,
@@ -425,7 +432,19 @@ export const webElectronShim = {
   cloudsaveGetStatus:   async () => null,
   cloudsaveRestore:     async () => ({ ok: false }),
 
-  // ─── Share Settings & Links (via Cloudflare Worker) ─────────────────────
+  shareDeployWorker:    async () => ({ ok: false, message: 'Deployment not supported on web version' }),
+
+  shareGetLinks: async (hash) => {
+    try {
+      const db = await getDB();
+      return await new Promise((resolve) => {
+        const tx  = db.transaction(STORE_NAME, 'readonly');
+        const req = tx.objectStore(STORE_NAME).get(`links_${hash}`);
+        req.onsuccess = () => resolve(req.result || []);
+        req.onerror   = () => resolve([]);
+      });
+    } catch { return []; }
+  },
 
   shareGetSettings: async (hash) => {
     const match = document.cookie.match(new RegExp('(^| )dbx_share_' + hash + '=([^;]+)'));
@@ -435,19 +454,11 @@ export const webElectronShim = {
   },
 
   shareSaveSettings: async (hash, settings) => {
-    const data = btoa(encodeURIComponent(JSON.stringify(settings)).replace(/%([0-9A-F]{2})/g, (m, p) => String.fromCharCode('0x' + p)));
-    document.cookie = `dbx_share_${hash}=${data}; path=/; max-age=31536000; SameSite=Lax`;
-    return true;
-  },
-
-  shareGetLinks: async (hash) => {
-    const db = await getDB();
-    return new Promise((resolve) => {
-      const tx  = db.transaction(STORE_NAME, 'readonly');
-      const req = tx.objectStore(STORE_NAME).get(`links_${hash}`);
-      req.onsuccess = () => resolve(req.result || []);
-      req.onerror   = () => resolve([]);
-    });
+    try {
+      const data = btoa(encodeURIComponent(JSON.stringify(settings)).replace(/%([0-9A-F]{2})/g, (m, p) => String.fromCharCode('0x' + p)));
+      document.cookie = `dbx_share_${hash}=${data}; path=/; max-age=31536000; SameSite=Lax`;
+      return true;
+    } catch { return false; }
   },
 
   shareCreateLink: async (hash, { filePath, fileId, permission, expiresAt }) => {

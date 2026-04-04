@@ -147,20 +147,34 @@ function AppInner() {
     setCurrentTrack(playlist[prevIdx]);
   };
 
-    useEffect(() => {
+  useEffect(() => {
     let isMounted = true;
-    if (webhookUrl && !isConnected && !loading && !isConnecting) {
+    let retryCount = 0;
+    const MAX_RETRIES = 3;
+
+    const autoConnect = async () => {
+      if (!webhookUrl || isConnected || loading || isConnecting) return;
+      
       setAutoConnecting(true);
-      connect(webhookUrl)
-        .catch(err => {
-          console.error('[App] Auto-connect failed:', err);
-          // Show user-friendly error
-          toast.error(err.message || 'Gagal menghubungkan ke drive. Silakan coba login kembali.');
-        })
-        .finally(() => { if (isMounted) setAutoConnecting(false); });
-    }
+      try {
+        await connect(webhookUrl);
+      } catch (err) {
+        console.error('[App] Auto-connect failed:', err);
+        if (retryCount < MAX_RETRIES && isMounted) {
+          retryCount++;
+          const delay = Math.pow(2, retryCount) * 1000;
+          setTimeout(autoConnect, delay);
+        } else if (isMounted) {
+          toast.error('Gagal menghubungkan secara otomatis. Silakan login kembali.');
+        }
+      } finally {
+        if (isMounted) setAutoConnecting(false);
+      }
+    };
+
+    autoConnect();
     return () => { isMounted = false; };
-  }, []);
+  }, [webhookUrl, isConnected]);
 
   // Tangani route /share/* — tampilkan ShareViewPage tanpa perlu login
   if (window.location.pathname.startsWith('/share/')) {
