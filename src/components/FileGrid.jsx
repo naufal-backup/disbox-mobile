@@ -70,8 +70,39 @@ export default function FileGrid({ isLockedView = false, isStarredView = false, 
   const activeFolderRef = useRef(null);
   const contextMenuRef = useRef(null);
   const contentRef = useRef(null);
+  const longPressTimerRef = useRef(null);
 
   useRubberBand(contentRef, { uiScale, selectedFiles, setSelectedFiles, setIsSelectionMode });
+
+  const toggleSelect = (id, e) => {
+    e?.stopPropagation?.();
+    setIsSelectionMode(true);
+    setSelectedFiles(prev => { 
+      const next = new Set(prev); 
+      if (next.has(id)) next.delete(id); 
+      else next.add(id); 
+      if (next.size === 0) setIsSelectionMode(false);
+      return next; 
+    });
+  };
+
+  const handlePointerDown = (id, e) => {
+    if (e.button !== 0 && e.pointerType === 'mouse') return;
+    if (isSelectionMode) return;
+
+    longPressTimerRef.current = setTimeout(() => {
+      toggleSelect(id);
+      if (window.navigator?.vibrate) window.navigator.vibrate(50);
+      longPressTimerRef.current = null;
+    }, 600);
+  };
+
+  const handlePointerUp = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
 
   useEffect(() => {
     if (contextMenu && contextMenuRef.current) {
@@ -521,7 +552,23 @@ const handleBulkDelete = async () => {
                 const isPartOfSelection = selectedFiles.has(fullPath);
                 const canBeDropTarget = dragSource?.bulk ? !isPartOfSelection : (dragSource && fullPath !== dragSource && !fullPath.startsWith(dragSource + '/'));
                 return (
-                  <motion.div key={fullPath} data-item-id={fullPath} className={`${styles.card} ${isPartOfSelection ? styles.selected : ''} ${dragOverTarget === fullPath ? styles.isDragTarget : ''} ${_pending ? styles.pending : ''}`} draggable={!_pending} onDragStart={(e) => handleDragStart(e, fullPath)} onDragEnd={() => setDragSource(null)} onDragOver={(e) => { const types = Array.from(e.dataTransfer.types); if (canBeDropTarget || types.includes('Files')) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; if (dragOverTarget !== fullPath) setDragOverTarget(fullPath); } }} onDragLeave={(e) => { const rect = e.currentTarget.getBoundingClientRect(); if (e.clientX < rect.left || e.clientX >= rect.right || e.clientY < rect.top || e.clientY >= rect.bottom) setDragOverTarget(null); }} onDrop={(e) => { setDragOverTarget(null); handleDropMove(e, fullPath); }} onDoubleClick={() => !_pending && handleFolderClick(fullPath)} onClick={(e) => toggleSelect(fullPath, e)} onContextMenu={(e) => { if (_pending) return; e.preventDefault(); e.stopPropagation(); setContextMenu({ x: e.clientX / uiScale, y: e.clientY / uiScale, path: fullPath, isFolder: true }); }}>
+                  <motion.div 
+                    key={fullPath} 
+                    data-item-id={fullPath} 
+                    className={`${styles.card} ${isPartOfSelection ? styles.selected : ''} ${dragOverTarget === fullPath ? styles.isDragTarget : ''} ${_pending ? styles.pending : ''}`} 
+                    draggable={!_pending} 
+                    onDragStart={(e) => handleDragStart(e, fullPath)} 
+                    onDragEnd={() => setDragSource(null)} 
+                    onDragOver={(e) => { const types = Array.from(e.dataTransfer.types); if (canBeDropTarget || types.includes('Files')) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; if (dragOverTarget !== fullPath) setDragOverTarget(fullPath); } }} 
+                    onDragLeave={(e) => { const rect = e.currentTarget.getBoundingClientRect(); if (e.clientX < rect.left || e.clientX >= rect.right || e.clientY < rect.top || e.clientY >= rect.bottom) setDragOverTarget(null); }} 
+                    onDrop={(e) => { setDragOverTarget(null); handleDropMove(e, fullPath); }} 
+                    onDoubleClick={() => !_pending && !isSelectionMode && handleFolderClick(fullPath)} 
+                    onClick={(e) => { if (isSelectionMode) { toggleSelect(fullPath, e); } else if (!_pending) { handleFolderClick(fullPath); } }}
+                    onPointerDown={(e) => !_pending && handlePointerDown(fullPath, e)}
+                    onPointerUp={handlePointerUp}
+                    onPointerLeave={handlePointerUp}
+                    onContextMenu={(e) => { if (_pending) return; e.preventDefault(); e.stopPropagation(); setContextMenu({ x: e.clientX / uiScale, y: e.clientY / uiScale, path: fullPath, isFolder: true }); }}
+                  >
                     <AnimatePresence>
                       {isLocked && (
                         <motion.div 
@@ -558,7 +605,20 @@ const handleBulkDelete = async () => {
                 const name = file.path.split('/').pop();
                 const _pending = file._pending;
                 return (
-                  <motion.div key={file.id || file.path} data-item-id={file.id} className={`${styles.card} ${selectedFiles.has(file.id) ? styles.selected : ''} ${_pending ? styles.pending : ''}`} draggable={!_pending} onDragStart={(e) => handleDragStart(e, file.path, file.id)} onDragEnd={() => setDragSource(null)} onClick={(e) => toggleSelect(file.id, e)} onContextMenu={(e) => { if (_pending) return; e.preventDefault(); e.stopPropagation(); setContextMenu({ x: e.clientX / uiScale, y: e.clientY / uiScale, path: file.path, file, isFolder: false }); }} onDoubleClick={() => !_pending && handleFileClick(file)}>
+                  <motion.div 
+                    key={file.id || file.path} 
+                    data-item-id={file.id} 
+                    className={`${styles.card} ${selectedFiles.has(file.id) ? styles.selected : ''} ${_pending ? styles.pending : ''}`} 
+                    draggable={!_pending} 
+                    onDragStart={(e) => handleDragStart(e, file.path, file.id)} 
+                    onDragEnd={() => setDragSource(null)} 
+                    onDoubleClick={() => !_pending && !isSelectionMode && handleFileClick(file)}
+                    onClick={(e) => { if (isSelectionMode) { toggleSelect(file.id, e); } else if (!_pending) { handleFileClick(file); } }}
+                    onPointerDown={(e) => !_pending && handlePointerDown(file.id, e)}
+                    onPointerUp={handlePointerUp}
+                    onPointerLeave={handlePointerUp}
+                    onContextMenu={(e) => { if (_pending) return; e.preventDefault(); e.stopPropagation(); setContextMenu({ x: e.clientX / uiScale, y: e.clientY / uiScale, path: file.path, file, isFolder: false }); }}
+                  >
                     <AnimatePresence>
                       {file.isLocked && (
                         <motion.div 
@@ -602,7 +662,23 @@ const handleBulkDelete = async () => {
                 const isStarred = folderStars.has(fullPath);
                 const iconSize = Math.max(20, 24 * zoom);
                 return (
-                  <div key={fullPath} data-item-id={fullPath} className={`${styles.listRow} ${selectedFiles.has(fullPath) ? styles.selected : ''} ${dragOverTarget === fullPath ? styles.isDragTarget : ''} ${_pending ? styles.pending : ''}`} draggable={!_pending} onDragStart={(e) => handleDragStart(e, fullPath)} onDragEnd={() => setDragSource(null)} onDragOver={(e) => { if (_pending) return; const types = Array.from(e.dataTransfer.types); if (types.includes('Files')) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; if (dragOverTarget !== fullPath) setDragOverTarget(fullPath); } }} onDragLeave={() => setDragOverTarget(null)} onDrop={(e) => { setDragOverTarget(null); handleDropMove(e, fullPath); }} onDoubleClick={() => handleFolderClick(fullPath)} onClick={(e) => toggleSelect(fullPath, e)} onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setContextMenu({ x: e.clientX / uiScale, y: e.clientY / uiScale, path: fullPath, isFolder: true }); }}>
+                  <div 
+                    key={fullPath} 
+                    data-item-id={fullPath} 
+                    className={`${styles.listRow} ${selectedFiles.has(fullPath) ? styles.selected : ''} ${dragOverTarget === fullPath ? styles.isDragTarget : ''} ${_pending ? styles.pending : ''}`} 
+                    draggable={!_pending} 
+                    onDragStart={(e) => handleDragStart(e, fullPath)} 
+                    onDragEnd={() => setDragSource(null)} 
+                    onDragOver={(e) => { if (_pending) return; const types = Array.from(e.dataTransfer.types); if (types.includes('Files')) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; if (dragOverTarget !== fullPath) setDragOverTarget(fullPath); } }} 
+                    onDragLeave={() => setDragOverTarget(null)} 
+                    onDrop={(e) => { setDragOverTarget(null); handleDropMove(e, fullPath); }} 
+                    onDoubleClick={() => !isSelectionMode && handleFolderClick(fullPath)} 
+                    onClick={(e) => { if (isSelectionMode) { toggleSelect(fullPath, e); } else { handleFolderClick(fullPath); } }}
+                    onPointerDown={(e) => !_pending && handlePointerDown(fullPath, e)}
+                    onPointerUp={handlePointerUp}
+                    onPointerLeave={handlePointerUp}
+                    onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setContextMenu({ x: e.clientX / uiScale, y: e.clientY / uiScale, path: fullPath, isFolder: true }); }}
+                  >
                     <div className={styles.listIcon} style={{ width: iconSize, height: iconSize, flexShrink: 0, marginRight: 4 }}>
                       {_pending?.type === 'create' ? (
                         <div className={`skeleton ${styles.ghostIconSkeleton}`} style={{ width: iconSize, height: iconSize, borderRadius: '4px' }} />
@@ -626,7 +702,20 @@ const handleBulkDelete = async () => {
                 const iconSize = Math.max(20, 24 * zoom);
                 const _pending = file._pending;
                 return (
-                  <div key={file.id || file.path} data-item-id={file.id} className={`${styles.listRow} ${selectedFiles.has(file.id) ? styles.selected : ''} ${_pending ? styles.pending : ''}`} draggable={!_pending} onDragStart={(e) => handleDragStart(e, file.path, file.id)} onDragEnd={() => setDragSource(null)} onClick={(e) => toggleSelect(file.id, e)} onContextMenu={(e) => { if (_pending) return; e.preventDefault(); e.stopPropagation(); setContextMenu({ x: e.clientX / uiScale, y: e.clientY / uiScale, path: file.path, file, isFolder: false }); }} onDoubleClick={() => !_pending && handleFileClick(file)}>
+                  <div 
+                    key={file.id || file.path} 
+                    data-item-id={file.id} 
+                    className={`${styles.listRow} ${selectedFiles.has(file.id) ? styles.selected : ''} ${_pending ? styles.pending : ''}`} 
+                    draggable={!_pending} 
+                    onDragStart={(e) => handleDragStart(e, file.path, file.id)} 
+                    onDragEnd={() => setDragSource(null)} 
+                    onDoubleClick={() => !isSelectionMode && handleFileClick(file)}
+                    onClick={(e) => { if (isSelectionMode) { toggleSelect(file.id, e); } else { handleFileClick(file); } }}
+                    onPointerDown={(e) => !_pending && handlePointerDown(file.id, e)}
+                    onPointerUp={handlePointerUp}
+                    onPointerLeave={handlePointerUp}
+                    onContextMenu={(e) => { if (_pending) return; e.preventDefault(); e.stopPropagation(); setContextMenu({ x: e.clientX / uiScale, y: e.clientY / uiScale, path: file.path, file, isFolder: false }); }}
+                  >
                     <div className={styles.listIcon} style={{ width: iconSize, height: iconSize, display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: 4, flexShrink: 0 }}>
                       {_pending ? (
                         <div className={`skeleton ${styles.ghostIconSkeleton}`} style={{ width: iconSize, height: iconSize, borderRadius: '4px' }} />
