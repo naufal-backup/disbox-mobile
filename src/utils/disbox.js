@@ -178,7 +178,10 @@ export class DisboxAPI {
       bytes = await window.electron.proxyDownload(url);
     } else {
       const proxiedUrl = `${BASE_API}/api/proxy?url=${encodeURIComponent(url)}`;
-      bytes = await fetch(proxiedUrl, { credentials: 'include' }).then(r => r.arrayBuffer());
+      bytes = await fetch(proxiedUrl, { 
+        credentials: 'include', 
+        headers: this._getHeaders() 
+      }).then(r => r.arrayBuffer());
     }
     const dec = await this.decrypt(bytes);
     return JSON.parse(new TextDecoder().decode(dec));
@@ -187,13 +190,19 @@ export class DisboxAPI {
   async _getMsgIdFromDiscovery() {
     let channelId = null;
     try {
-      const res = await (window.electron ? window.electron.fetch(this.webhookUrl) : fetch(`${BASE_API}/api/proxy?url=${encodeURIComponent(this.webhookUrl)}`, { credentials: 'include' }));
+      const res = await (window.electron ? window.electron.fetch(this.webhookUrl) : fetch(`${BASE_API}/api/proxy?url=${encodeURIComponent(this.webhookUrl)}`, { 
+        credentials: 'include',
+        headers: this._getHeaders()
+      }));
       const data = window.electron ? JSON.parse(res.body) : await res.json();
       channelId = data.channel_id;
     } catch {}
     if (!channelId) return null;
     try {
-      const dRes = await (window.electron ? window.electron.fetch(`${BASE_API}/api/discord/discover?channel_id=${channelId}`) : fetch(`${BASE_API}/api/discord/discover?channel_id=${channelId}`, { credentials: 'include' }));
+      const dRes = await (window.electron ? window.electron.fetch(`${BASE_API}/api/discord/discover?channel_id=${channelId}`) : fetch(`${BASE_API}/api/discord/discover?channel_id=${channelId}`, { 
+        credentials: 'include',
+        headers: this._getHeaders()
+      }));
       const dData = window.electron ? JSON.parse(dRes.body) : await dRes.json();
       return dData.ok && dData.found ? { best: dData.message_id } : null;
     } catch { return null; }
@@ -536,9 +545,10 @@ export class DisboxAPI {
       } else {
         const proxiedUrl = `${BASE_API}/api/proxy?url=${encodeURIComponent(url)}`;
         bytes = await fetch(proxiedUrl, { 
-        ...(signal ? { signal } : {}),
-        credentials: 'include'
-      }).then(r => r.arrayBuffer());
+          ...(signal ? { signal } : {}),
+          credentials: 'include',
+          headers: this._getHeaders()
+        }).then(r => r.arrayBuffer());
       }
 
       const decrypted = await this.decrypt(bytes);
@@ -565,7 +575,11 @@ export class DisboxAPI {
       resData = JSON.parse(res.body);
     } else {
       const proxiedMsgUrl = `${BASE_API}/api/proxy?url=${encodeURIComponent(`${webhookBase}/messages/${msgId}`)}`;
-      const res = await fetch(proxiedMsgUrl, { signal, credentials: 'include' });
+      const res = await fetch(proxiedMsgUrl, { 
+        signal, 
+        credentials: 'include',
+        headers: this._getHeaders()
+      });
       if (!res.ok) return new ArrayBuffer(0);
       resData = await res.json();
     }

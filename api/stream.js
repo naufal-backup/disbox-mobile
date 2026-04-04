@@ -23,6 +23,7 @@ const ALLOWED_ORIGINS = [
   'https://disbox-web-weld.vercel.app',
   'http://localhost:5173',
   'http://localhost:4173',
+  'http://localhost',     // Capacitor Android
   'https://localhost',     // Capacitor Android
   'capacitor://localhost', // Capacitor iOS
   ...(process.env.ALLOWED_ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean),
